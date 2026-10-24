@@ -1,0 +1,85 @@
+# Publishes a desktop release when its tag (desktop-v<version>, made by `npm run release -- <version>`) is pushed:
+# checks, builds the macOS app, makes the GitHub release with its zip and publishes the installer to npm.
+# Run it by hand (Actions › Desktop release › Run workflow) to check that it builds, without publishing anything.
+name: Desktop release
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+concurrency: desktop-release
+
+jobs:
+  release:
+    runs-on: macos-15 # Apple silicon, as the app is built for
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # npm trusted publishing
+    env:
+      PUBLISH: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Check the versions
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          for f in installer/package.json claude-plugin/.claude-plugin/plugin.json claude-plugin/.codex-plugin/plugin.json; do
+            [ "$(node -p "require('./$f').version")" = "$v" ] || { echo "::error::$f is not $v"; exit 1; }
+          done
+          [ "$(node -p "require('./.claude-plugin/marketplace.json').plugins.find(p => p.name === 'mcp-docs').version")" = "$v" ] \
+            || { echo "::error::.claude-plugin/marketplace.json is not $v"; exit 1; }
+          [ -f "release-notes/$v.md" ] || { echo "::error::release-notes/$v.md is missing"; exit 1; }
+          if [ "$PUBLISH" = true ] && [ "$GITHUB_REF_NAME" != "desktop-v$v" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $v"; exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Build the app
+        run: npm run desktop:mac
+
+      - name: Write the release notes
+        run: |
+          node -e "
+            const fs = require('fs');
+            const v = process.env.VERSION;
+            const t = fs.readFileSync('release-notes/template.md', 'utf8');
+            const notes = fs.readFileSync('release-notes/' + v + '.md', 'utf8').trim();
+            fs.writeFileSync('release/notes.md', t.replace('{{NOTES}}', notes).replaceAll('{{VERSION}}', v));
+          "
+          cat release/notes.md
+
+      - name: Make the GitHub release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Already made when a run that failed later is run again.
+        run: >
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "MCP Docs $VERSION (macOS)"
+          --notes-file release/notes.md "release/MCP-Docs-$VERSION-mac-arm64.zip"
+
+      - name: Publish the installer to npm
+        if: env.PUBLISH == 'true'
+        working-directory: installer
+        run: |
+          npm install -g npm@^11.5.1 # trusted publishing
+          npm publish --provenance
+
+      - name: Keep the build (dry run)
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCP-Docs-${{ env.VERSION }}-mac-arm64
+          path: release/MCP-Docs-${{ env.VERSION }}-mac-arm64.zip
+          retention-days: 3
