@@ -14,12 +14,12 @@ MCP Docs is a universal document editor for all standard office document types, 
 ![PowerPoint](https://img.icons8.com/color/48/microsoft-powerpoint-2019--v1.png) ![Word](https://img.icons8.com/color/48/microsoft-word-2019--v1.png) ![Excel](https://img.icons8.com/color/48/microsoft-excel-2019--v1.png) ![PDF](https://img.icons8.com/color/48/pdf.png) ![Images](https://img.icons8.com/color/48/image.png)
 
 [![Download MCP Docs for macOS](https://img.shields.io/badge/Download-MCP%20Docs%20for%20macOS-2ea44f?logo=apple)](https://github.com/freeflow-im/mcp-docs/releases/latest)
-[![npm](https://img.shields.io/npm/v/@scottpersinger/mcp-docs?label=npx%20%40scottpersinger%2Fmcp-docs)](https://www.npmjs.com/package/@scottpersinger/mcp-docs)
+[![npm](https://img.shields.io/npm/v/@freeflow-im/mcp-docs?label=npx%20%40freeflow-im%2Fmcp-docs)](https://www.npmjs.com/package/@freeflow-im/mcp-docs)
 
 ## Install
 
 ```
-npx @scottpersinger/mcp-docs
+npx @freeflow-im/mcp-docs
 ```
 
 This downloads the latest MCP Docs into `/Applications`, offers to install the **mcp-docs** plugin (the app's MCP
@@ -32,7 +32,7 @@ install it by hand. It needs a Mac with Apple silicon.
 ## Uninstall 
 
 ```
-npx @scottpersinger/mcp-docs --uninstall
+npx @freeflow-im/mcp-docs --uninstall
 ```
  removes the app, its data and settings, and agent config.
 
@@ -122,7 +122,7 @@ The packaged app holds the server's TypeScript as plain files (`asar` is off), w
 1. Write what is new in `release-notes/<version>.md` (a Markdown list; `release-notes/template.md` adds the install
    steps).
 2. `npm run release -- <version>` sets the version of the app, the Claude Code and Codex plugin (`claude-plugin/`), its
-   Claude marketplace entry (`.claude-plugin/marketplace.json`) and the installer (`installer/`, the `@scottpersinger/mcp-docs`
+   Claude marketplace entry (`.claude-plugin/marketplace.json`) and the installer (`installer/`, the `@freeflow-im/mcp-docs`
    npm package), commits that and tags it `desktop-v<version>`.
 3. `git push origin main desktop-v<version>`. The workflow checks, builds the app on Apple silicon, makes the GitHub
    release with its zip and publishes the installer to npm (trusted publishing: no npm token or one-time code).

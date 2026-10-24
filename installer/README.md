@@ -1,4 +1,4 @@
-# @scottpersinger/mcp-docs
+# @freeflow-im/mcp-docs
 
 Installs **MCP Docs**, a Mac app for Word, PowerPoint and Excel files, Markdown, CSV, PDFs and pictures in a
 folder on your Mac, and the **mcp-docs** plugin for [Claude Code](https://claude.com/claude-code) and
@@ -6,7 +6,7 @@ folder on your Mac, and the **mcp-docs** plugin for [Claude Code](https://claude
 them change in the app. Any other MCP client can connect to the app too.
 
 ```
-npx @scottpersinger/mcp-docs
+npx @freeflow-im/mcp-docs
 ```
 
 This:
@@ -18,7 +18,7 @@ This:
 3. Starts the app, and prints its MCP address, `http://127.0.0.1:39217/mcp`.
 
 Then sign in once: in Claude Code, restart it, run `/mcp` and sign in to `plugin:mcp-docs:mcp-docs`; in Codex, run
-`codex mcp login mcp-docs`. The app asks you to allow each agent. Run `npx @scottpersinger/mcp-docs` again to update
+`codex mcp login mcp-docs`. The app asks you to allow each agent. Run `npx @freeflow-im/mcp-docs` again to update
 everything.
 
 **Any other MCP client** can connect to `http://127.0.0.1:39217/mcp` (streamable HTTP) while the app is running. It
@@ -30,7 +30,7 @@ it to every agent found without asking), `--skip-app` (plugins only), `--skip-pl
 To remove it all again:
 
 ```
-npx @scottpersinger/mcp-docs --uninstall
+npx @freeflow-im/mcp-docs --uninstall
 ```
 
 This removes the app, its data and settings (the assistant's chats, API keys, connected agents) and what it

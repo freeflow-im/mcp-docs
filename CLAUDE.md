@@ -149,7 +149,7 @@ type stripping; imports use `.ts` extensions.
   an Agent (MCP)… shows the `claude mcp add` command and disconnects them. For Claude Code and Codex it is also a plugin,
   `claude-plugin/` (the server and a skill, `skills/mcp-docs/SKILL.md`; manifests `.claude-plugin/plugin.json` and
   `.codex-plugin/plugin.json`; the marketplaces are `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
-  at the root), installed with the app by `npx @scottpersinger/mcp-docs` (`installer/`, its own npm package, which asks
+  at the root), installed with the app by `npx @freeflow-im/mcp-docs` (`installer/`, its own npm package, which asks
   which agents to add it to and prints the MCP address for any other client; its version, the plugins' and the Claude
   marketplace entry's are the desktop release's: `npm run release -- <version>` sets them all and tags
   `desktop-v<version>`, and pushing the tag has `.github/workflows/desktop-release.yml` build the app, make the GitHub

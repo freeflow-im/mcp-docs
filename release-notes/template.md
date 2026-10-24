@@ -4,7 +4,7 @@ The desktop app for macOS (Apple Silicon). It opens a folder on your Mac as its 
 
 **Install**
 
-Easiest: run `npx @scottpersinger/mcp-docs` in Terminal; it installs or updates this app and the Claude Code plugin. Or by hand:
+Easiest: run `npx @freeflow-im/mcp-docs` in Terminal; it installs or updates this app and the Claude Code plugin. Or by hand:
 
 1. Download `MCP-Docs-{{VERSION}}-mac-arm64.zip` and unzip it.
 2. Move **MCP Docs** to Applications (replacing the older version) and open it.

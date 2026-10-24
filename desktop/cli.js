@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `mcp-docs-dev [folder]` (from a clone; the published `@scottpersinger/mcp-docs` package is the installer in installer/): open the desktop app on a folder (the current directory by default).
+// `mcp-docs-dev [folder]` (from a clone; the published `@freeflow-im/mcp-docs` package is the installer in installer/): open the desktop app on a folder (the current directory by default).
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';

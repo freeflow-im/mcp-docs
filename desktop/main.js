@@ -258,7 +258,7 @@ async function connectAgent() {
     type: 'info',
     title: 'Connect an Agent',
     message: mcpListening ? 'Agents on this computer can read and edit the open folder’s files, and the app shows what they open.' : `The MCP server is not running: port ${MCP_PORT} is in use, probably by another copy of the app.`,
-    detail: `MCP server (MCP Docs): ${MCP_URL}/mcp\n\nTo add it to Claude Code, run the command below (or install the mcp-docs plugin with: npx @scottpersinger/mcp-docs), then /mcp in Claude Code to sign in. The app asks you to allow each agent that connects.\n\n${command}\n\n${connected}`,
+    detail: `MCP server (MCP Docs): ${MCP_URL}/mcp\n\nTo add it to Claude Code, run the command below (or install the mcp-docs plugin with: npx @freeflow-im/mcp-docs), then /mcp in Claude Code to sign in. The app asks you to allow each agent that connects.\n\n${command}\n\n${connected}`,
     buttons: agents.length ? ['Copy Command', 'Disconnect All Agents', 'Close'] : ['Copy Command', 'Close'],
     defaultId: 0,
     cancelId: agents.length ? 2 : 1,

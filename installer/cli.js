@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `npx @scottpersinger/mcp-docs`: install (or update) the MCP Docs desktop app from the latest GitHub release, then,
+// `npx @freeflow-im/mcp-docs`: install (or update) the MCP Docs desktop app from the latest GitHub release, then,
 // for each coding agent found (Claude Code, Codex) that the person wants it for, the plugin that connects the agent
 // to it: the claude-plugin folder of the same repository, which is both a Claude Code plugin (its marketplace is
 // .claude-plugin/marketplace.json there) and a Codex plugin (.agents/plugins/marketplace.json). Any other MCP client
@@ -25,8 +25,8 @@ const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
 
 if (flag('help') || flag('h') || args.some((a) => !a.startsWith('--'))) {
-  console.log(`Usage: npx @scottpersinger/mcp-docs [--claude] [--codex] [--skip-app] [--skip-plugins] [--yes]
-       npx @scottpersinger/mcp-docs --uninstall [--yes]
+  console.log(`Usage: npx @freeflow-im/mcp-docs [--claude] [--codex] [--skip-app] [--skip-plugins] [--yes]
+       npx @freeflow-im/mcp-docs --uninstall [--yes]
 
 Installs the latest MCP Docs desktop app into /Applications (or ~/Applications), and the mcp-docs plugin
 into the coding agents you choose, Claude Code and Codex, which connects them to the app. It asks for each
@@ -198,7 +198,7 @@ async function chooseAgents() {
   const chosen = [];
   for (const agent of candidates) {
     if (!agent.found()) {
-      if (named.length) say(`\n${agent.name} was not found (the \`${agent.key}\` command). Install it, then run \`npx @scottpersinger/mcp-docs --skip-app --${agent.key}\`.`);
+      if (named.length) say(`\n${agent.name} was not found (the \`${agent.key}\` command). Install it, then run \`npx @freeflow-im/mcp-docs --skip-app --${agent.key}\`.`);
       continue;
     }
     if (named.length || flag('yes') || !process.stdin.isTTY || (await confirm(`\nAdd the MCP Docs plugin to ${agent.name}?`))) chosen.push(agent);
