@@ -860,6 +860,22 @@ describe('stored files', () => {
     expect(imageEdits).toHaveLength(before);
   });
 
+  it('finds a stored file by its folder and name, for pictures a Markdown document names by path', async () => {
+    const { cookie } = await signUp(app, box, 'filesat@x.com');
+    const { cookie: other } = await signUp(app, box, 'filesat2@x.com');
+    expect((await app.inject({ method: 'POST', url: '/api/folders', headers: { cookie }, payload: { name: 'images' } })).statusCode).toBe(200);
+    const shot = (await app.inject({ method: 'POST', url: '/api/files?folder=images', headers: { cookie, 'content-type': 'image/png', 'x-filename': 'shot.png' }, payload: Buffer.from('png bytes') })).json().file;
+    const at = (q: string, c = cookie) => app.inject({ method: 'GET', url: `/api/files/at?${q}`, headers: { cookie: c } });
+
+    const res = await at('folder=images&name=shot.png');
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe(`/api/files/${shot.id}`);
+    expect((await at('name=shot.png')).statusCode).toBe(404);
+    expect((await at('folder=images&name=../shot.png')).statusCode).toBe(404);
+    expect((await at('folder=elsewhere&name=shot.png')).statusCode).toBe(404);
+    expect((await at('folder=images&name=shot.png', other)).statusCode).toBe(404);
+  });
+
   it('stores PDFs per owner, serves them inline and as downloads, and lists them newest first', async () => {
     const { cookie } = await signUp(app, box, 'files@x.com');
     const { cookie: other } = await signUp(app, box, 'files2@x.com');

@@ -438,7 +438,7 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
           <>
             <ResizeHandle panel={preview} side="right" label="Resize preview" className="md-preview-resize" />
             <div className="md-preview" style={{ width: preview.width }} ref={previewRef}>
-              <MarkdownPreview text={ctl.text} loadMermaid={loadMermaid} />
+              <MarkdownPreview text={ctl.text} loadMermaid={loadMermaid} folder={meta.folder ?? ''} />
             </div>
           </>
         )}

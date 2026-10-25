@@ -1219,6 +1219,14 @@ export async function buildApp(opts: AppOptions) {
       return isFileId(id) ? storedFiles.get(req.user!.id, id) : null;
     };
 
+    // The stored file called `name` in the request's folder, by a redirect to its own address: how a Markdown
+    // preview shows a picture named by a path relative to the document (`images/chart.png`).
+    r.get('/api/files/at', async (req, reply) => {
+      const { name } = req.query as { name?: unknown };
+      const f = typeof name === 'string' && name && !/[\\/]/.test(name) ? storedFiles.listIn(req.user!.id, req.folder ?? '').find((m) => m.filename === name) : undefined;
+      return f ? reply.header('Cache-Control', 'no-cache').redirect(`/api/files/${f.id}`) : reply.code(404).send({ error: 'File not found' });
+    });
+
     r.get('/api/files/:id/meta', async (req, reply) => {
       const f = storedFile(req);
       return f ? { file: f.meta } : reply.code(404).send({ error: 'File not found' });

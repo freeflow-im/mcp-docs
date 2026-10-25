@@ -287,6 +287,15 @@ describe('a mounted folder', () => {
     expect(readFileSync(at('scan 2.pdf'), 'utf8')).toBe('%PDF-1.4 other');
   });
 
+  it('finds a file by its path for a Markdown preview, even one not listed yet', async () => {
+    mkdirSync(at('docs', 'images'), { recursive: true });
+    writeFileSync(at('docs', 'images', 'shot.png'), 'png bytes');
+    const res = await app.inject({ method: 'GET', url: '/api/files/at?folder=docs/images&name=shot.png' });
+    expect(res.statusCode).toBe(302);
+    expect((await app.inject({ method: 'GET', url: res.headers.location as string })).body).toBe('png bytes');
+    expect((await app.inject({ method: 'GET', url: '/api/files/at?folder=docs&name=shot.png' })).statusCode).toBe(404);
+  });
+
   it('opens an Excel file as a spreadsheet and saves it as one, keeping the original the first time', async () => {
     const book = new ExcelJS.Workbook();
     const ws = book.addWorksheet('Budget');
