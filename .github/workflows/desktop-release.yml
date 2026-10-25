@@ -14,6 +14,7 @@ concurrency: desktop-release
 jobs:
   build:
     strategy:
+      fail-fast: false # one platform's failure still shows whether the other builds
       matrix:
         include:
           - os: macos-15 # Apple silicon, as the Mac app is built for

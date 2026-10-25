@@ -89,7 +89,7 @@ describe('signing in agents to the desktop app', () => {
 
     // Kept across restarts, in a file only the user can read, with no token in it as it was given.
     const file = path.join(dir, 'mcp-auth.json');
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600); // Windows has no such modes
     expect(readFileSync(file, 'utf8')).not.toContain(refreshed.access_token);
     const again = new LocalOAuth({ file, issuer: origin, approve: async () => true });
     expect(again.verify(`Bearer ${refreshed.access_token}`)).toBe('Claude Code (mcp-docs)');

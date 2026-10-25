@@ -93,7 +93,8 @@ describe('a mounted folder', () => {
     expect((await call('GET', '/api/library?folder=..')).status).toBe(404);
   });
 
-  it('says so when a folder cannot be read, rather than showing it empty', async () => {
+  // Windows has no modes that make a folder unreadable.
+  it.skipIf(process.platform === 'win32')('says so when a folder cannot be read, rather than showing it empty', async () => {
     mkdirSync(at('locked'));
     chmodSync(at('locked'), 0o000);
     try {
@@ -660,8 +661,9 @@ describe('recents: the files last opened on the machine', () => {
   it('lists scratch pads, makes a new one in ~/.config/mcp-docs and opens one by its name', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'sheetsweb-home-'));
     const data = mkdtempSync(path.join(tmpdir(), 'sheetsweb-localdata-'));
-    const before = process.env.HOME;
+    const before = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
     process.env.HOME = home;
+    process.env.USERPROFILE = home; // the home folder on Windows
     const files: [string, string | undefined][] = [];
     const returned: [string, boolean | undefined, string | undefined][] = [];
     const app = await buildApp({ dataDir: data, local: { dir: folder, recents: null, openFile: (f, _r, back) => files.push([f, back]), openFolder: (d, t, f) => returned.push([d, t, f]) } });
@@ -699,7 +701,10 @@ describe('recents: the files last opened on the machine', () => {
       expect((await app.inject({ method: 'POST', url: '/api/local/return', payload: { dir: 'relative' } })).statusCode).toBe(400);
       expect((await app.inject({ method: 'POST', url: '/api/local/return', payload: { dir: path.join(home, 'gone') } })).statusCode).toBe(404);
     } finally {
-      process.env.HOME = before;
+      for (const [k, v] of Object.entries(before)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
       await app.close();
       await atPads.close();
       rmSync(data, { recursive: true, force: true });
