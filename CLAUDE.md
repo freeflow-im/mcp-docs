@@ -153,7 +153,10 @@ type stripping; imports use `.ts` extensions.
   which agents to add it to and prints the MCP address for any other client; its version, the plugins' and the Claude
   marketplace entry's are the desktop release's: `npm run release -- <version>` sets them all and tags
   `desktop-v<version>`, and pushing the tag has `.github/workflows/desktop-release.yml` build the Mac and Windows apps, make the GitHub
-  release and publish the installer to npm, with the notes in `release-notes/<version>.md`). A file
+  release and publish the installer to npm, with the notes in `release-notes/<version>.md`). Check for Updates… (the app menu; Help on Windows, `desktop/updater.js`)
+  downloads that release's file and installs it over the running app: on macOS it unpacks the new app beside the old one
+  and a detached script swaps it in after the app quits (the app is not Developer ID signed, so Electron's updater cannot);
+  on Windows the setup program runs silently with `--force-run`. A file
   the model opens, creates or imports is shown in the window (`FileHub.onShow`, a `show` message to `main.js`,
   a `universal-show` event to the router), and the window reports the file it shows (`POST /api/local/showing`,
   `client/src/desktopBridge.ts`, with the window's `WINDOW_ID`), which the tools act on when no id is given.

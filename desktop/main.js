@@ -11,6 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { contextMenuTemplate } from './contextMenu.js';
 import { LocalOAuth } from './mcpAuth.js';
+import { createUpdater } from './updater.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 // Also names the app's data directory, which would otherwise be the generic "Electron" one.
@@ -779,6 +780,24 @@ async function chooseFolder(win = null, inTab = false) {
   return true;
 }
 
+// Check for Updates… (desktop/updater.js). While an update downloads, the menu item shows how far it is, as do the
+// windows' progress bars (the Dock icon, the taskbar button).
+let updateProgress = null;
+const updater = createUpdater({
+  app,
+  dialog,
+  shell,
+  onProgress: (fraction) => {
+    updateProgress = fraction;
+    for (const win of BrowserWindow.getAllWindows()) win.setProgressBar(fraction ?? -1);
+    buildMenu();
+  },
+});
+const checkForUpdatesItem = () =>
+  updateProgress === null
+    ? { label: 'Check for Updates…', click: () => void updater.check() }
+    : { label: `Downloading Update… ${Math.round(updateProgress * 100)}%`, enabled: false };
+
 function buildMenu() {
   const mac = process.platform === 'darwin';
   Menu.setApplicationMenu(
@@ -789,6 +808,7 @@ function buildMenu() {
               role: 'appMenu',
               submenu: [
                 { role: 'about' },
+                checkForUpdatesItem(),
                 ...(canBeDefault() ? [{ type: 'separator' }, { label: 'Make Default App…', click: () => void offerDefaultApp() }] : []),
                 { type: 'separator' },
                 { role: 'services' },
@@ -831,6 +851,7 @@ function buildMenu() {
       { role: 'editMenu' },
       { role: 'viewMenu' },
       { role: 'windowMenu' },
+      ...(mac ? [] : [{ role: 'help', submenu: [checkForUpdatesItem(), { type: 'separator' }, { role: 'about' }] }]),
     ]),
   );
 }
