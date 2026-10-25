@@ -1,20 +1,60 @@
 # MCP Docs
 
-MCP Docs is a universal document editor for all standard office document types, images and PDFs. Integrated with agentic AI through MCP, it lets LLM-powered agents open, read, create and edit documents alongside you, with every change visible in the app.
-
-**Full editing for**
-
-* Slides (Powerpoint)
-* Documents (Word, Markdown, text)
-* HTML pages
-* Spreadsheets (Excel)
-* PDF files
-* Images
-
 ![PowerPoint](https://img.icons8.com/color/48/microsoft-powerpoint-2019--v1.png) ![Word](https://img.icons8.com/color/48/microsoft-word-2019--v1.png) ![Excel](https://img.icons8.com/color/48/microsoft-excel-2019--v1.png) ![PDF](https://img.icons8.com/color/48/pdf.png) ![Images](https://img.icons8.com/color/48/image.png)
 
 [![Download MCP Docs for macOS](https://img.shields.io/badge/Download-MCP%20Docs%20for%20macOS-2ea44f?logo=apple)](https://github.com/freeflow-im/mcp-docs/releases/latest)
 [![npm](https://img.shields.io/npm/v/@freeflow-im/mcp-docs?label=npx%20%40freeflow-im%2Fmcp-docs)](https://www.npmjs.com/package/@freeflow-im/mcp-docs)
+
+
+MCP Docs is universal document editor, built with "native" AI integration. It started as sort of my own rewrite of Google Docs - but now its some kind of combination of Office suite, Google Docs, Sublime Text and Mac _Preview_. 
+
+It runs locally on your computer, but also runs in the cloud - you can access the cloud version from either the local app or just a browser.
+
+![MCP Docs presentation editor showing a scaled dot-product attention diagram](docs/images/presentation-editor.png)
+
+![MCP Docs spreadsheet editor showing recent YC batch companies](docs/images/spreadsheet-editor.png)
+
+It supports editing all the standard Office documents:
+- Spreadsheets (Excel)
+- Slides (Powerpoint)
+- Documents (Word)
+
+But also offers quite capable editing for:
+- Images (including background removal)
+- HTML files
+- PDF Files
+- Markdown and text files
+ 
+The app is a bit of a "bridge" between traditional productivity suites and the AI agents world.
+
+## Using *MCP*
+
+MCP Docs offers two **_agent_** experiences:
+1. A built-in assistant available "in situ" that sits next to the current doc for editing:
+
+![MCP Docs spreadsheet with the built-in assistant sorting companies by location](docs/images/assistant-sort.png)
+
+2. Any external agent can connect to the MCP server and drive the application:
+
+![External agent converting a monthly budget into a startup company budget in MCP Docs](docs/images/external-agent-budget.png)
+_Codex driving the MCP Docs app_
+
+For the internal _assistant_, you can provide either an LLM API key, **OR** you can connect your local coding agent (Codex or Claude). This second mode is convenient to take advantage of your existing coding agent setup and subscription, although the latency is a little higher than the built-in assistant.
+
+## Features
+
+Besides editing standard Office files (don't need to pay for Office!), and using the AI integration to supercharge your editing, some other interesting features include:
+- Excellent PDF OCR parsing (_Convert to markdown_) using [liteparse](https://github.com/run-llama/liteparse) from LlamaIndex 
+- PDF signing and editing support, similar to _Preview_
+- Live Markdown preview
+- JSON tree viewer
+
+But probably the biggest feature is **open source** - add your own new features as you need them.
+
+## Single-player
+
+Note that the current version of MCP Docs is "single player" - there is no sharing capability even on the web. This is still in development. I am web hosting for free currently at [docs.freeflow.im](https://docs.freeflow.im), but you can also just run the web backend yourself. If there's interest I may offer paid accounts 
+
 
 ## Install
 
