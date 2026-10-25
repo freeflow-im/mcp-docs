@@ -217,6 +217,9 @@ Resources:
           IMAGE=$REGISTRY/${Repository}:$TAG
 
           aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin $REGISTRY
+          # Only the running images are kept: the disk holds two app images, not a week of them. An older one is
+          # pulled again from the registry to roll back.
+          docker image prune -af >/dev/null || true
           docker pull $IMAGE
 
           # The app's secrets: every parameter under /mcpdocs/, named for its variable.
@@ -242,7 +245,7 @@ Resources:
             [ "$(docker inspect -f '{{.State.Health.Status}}' app)" = healthy ] && { echo "deployed $TAG"; break; }
             sleep 5
           done
-          docker image prune -af --filter until=168h >/dev/null || true
+          docker image prune -af >/dev/null || true
           [ "$(docker inspect -f '{{.State.Health.Status}}' app)" = healthy ] || { echo "app is not healthy"; docker logs --tail 50 app || true; exit 1; }
           EOF
           chmod 755 /opt/mcpdocs/deploy.sh
