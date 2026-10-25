@@ -2,7 +2,7 @@
 
 ![PowerPoint](https://img.icons8.com/color/48/microsoft-powerpoint-2019--v1.png) ![Word](https://img.icons8.com/color/48/microsoft-word-2019--v1.png) ![Excel](https://img.icons8.com/color/48/microsoft-excel-2019--v1.png) ![PDF](https://img.icons8.com/color/48/pdf.png) ![Images](https://img.icons8.com/color/48/image.png)
 
-[![Download MCP Docs for macOS](https://img.shields.io/badge/Download-MCP%20Docs%20for%20macOS-2ea44f?logo=apple)](https://github.com/freeflow-im/mcp-docs/releases/latest)
+[![Download MCP Docs for macOS and Windows](https://img.shields.io/badge/Download-MCP%20Docs%20for%20macOS%20and%20Windows-2ea44f)](https://github.com/freeflow-im/mcp-docs/releases/latest)
 [![npm](https://img.shields.io/npm/v/@freeflow-im/mcp-docs?label=npx%20%40freeflow-im%2Fmcp-docs)](https://www.npmjs.com/package/@freeflow-im/mcp-docs)
 
 
@@ -51,9 +51,9 @@ Besides editing standard Office files (don't need to pay for Office!), and using
 
 But probably the biggest feature is **open source** - add your own new features as you need them.
 
-## Single-player
+### Single-player
 
-Note that the current version of MCP Docs is "single player" - there is no sharing capability even on the web. This is still in development. I am web hosting for free currently at [docs.freeflow.im](https://docs.freeflow.im), but you can also just run the web backend yourself. If there's interest I may offer paid accounts 
+Current version of MCP Docs is "single player" - document sharing is coming later.
 
 
 ## Install
@@ -62,12 +62,13 @@ Note that the current version of MCP Docs is "single player" - there is no shari
 npx @freeflow-im/mcp-docs
 ```
 
-This downloads the latest MCP Docs into `/Applications`, offers to install the **mcp-docs** plugin (the app's MCP
+This downloads the latest MCP Docs into `/Applications` (on Windows it runs its setup program, which installs it for
+you), offers to install the **mcp-docs** plugin (the app's MCP
 server and a skill on using it) into Claude Code and Codex, whichever you have, starts the app, and prints the app's
 MCP address for any other client. Run it again to update everything. `--claude` or `--codex` picks the agents without
 asking, `--yes` takes every one found. You can also download the app
 from the [latest release](https://github.com/freeflow-im/mcp-docs/releases/latest); its notes say how to
-install it by hand. It needs a Mac with Apple silicon.
+install it by hand. It needs a Mac with Apple silicon or Windows (x64).
 
 ## Uninstall 
 
@@ -152,7 +153,7 @@ folder it may not read shows a message saying so.
 
 ### Packaging and releases
 
-`npm run desktop:win` builds the Windows app with electron-builder into `release/`: an installer (`MCP Docs Setup <version>.exe`) and a zip of the same files, both for x64. It can be run on macOS; without Wine the `.exe` keeps Electron's icon and is not code-signed, so Windows shows its "unknown publisher" warning on first run. `npm run desktop:pack` builds the unpacked app for the machine it runs on, to try the packaged layout.
+`npm run desktop:win` builds the Windows app with electron-builder into `release/`: its setup program (`MCP-Docs-<version>-win-x64-setup.exe`), for x64. It can be run on macOS; there the `.exe` keeps Electron's icon (the release, built on Windows, has the app's). It is not code-signed, so Windows shows its "unknown publisher" warning on first run. `npm run desktop:pack` builds the unpacked app for the machine it runs on, to try the packaged layout.
 
 The packaged app holds the server's TypeScript as plain files (`asar` is off), which Electron's Node runs as it does in development. Started from its icon it reopens the folder it showed last, or opens your home folder the first time; a folder can also be given on its command line. It reads no `.env`.
 
@@ -164,10 +165,12 @@ The packaged app holds the server's TypeScript as plain files (`asar` is off), w
 2. `npm run release -- <version>` sets the version of the app, the Claude Code and Codex plugin (`claude-plugin/`), its
    Claude marketplace entry (`.claude-plugin/marketplace.json`) and the installer (`installer/`, the `@freeflow-im/mcp-docs`
    npm package), commits that and tags it `desktop-v<version>`.
-3. `git push origin main desktop-v<version>`. The workflow checks, builds the app on Apple silicon, makes the GitHub
-   release with its zip and publishes the installer to npm (trusted publishing: no npm token or one-time code).
+3. `git push origin main desktop-v<version>`. The workflow checks and builds the app on Apple silicon and on Windows,
+   makes the GitHub release with the Mac zip and the Windows setup program, and publishes the installer to npm
+   (trusted publishing: no npm token or one-time code).
 
-Running the workflow by hand (Actions › Desktop release › Run workflow) builds without publishing anything.
+Running the workflow by hand (Actions › Desktop release › Run workflow) builds both without publishing anything; the
+builds are kept as the run's artifacts for three days.
 
 ## Videos
 

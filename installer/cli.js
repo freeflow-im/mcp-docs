@@ -5,8 +5,8 @@
 // .claude-plugin/marketplace.json there) and a Codex plugin (.agents/plugins/marketplace.json). Any other MCP client
 // can connect to the app's address itself. With --uninstall, remove all of it again: the app, its data and settings,
 // and what it added to the agents.
-import { spawnSync } from 'node:child_process';
-import { accessSync, constants, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { accessSync, constants, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -15,7 +15,10 @@ import { pipeline } from 'node:stream/promises';
 
 const REPO = 'freeflow-im/mcp-docs';
 const APP_NAME = 'MCP Docs';
-const ASSET = /^MCP-Docs-(\d+\.\d+\.\d+)-mac-arm64\.zip$/;
+/** Windows (x64, which Windows on Arm runs too) or a Mac with Apple silicon. */
+const WIN = process.platform === 'win32';
+const ASSET = WIN ? /^MCP-Docs-(\d+\.\d+\.\d+)-win-x64-setup\.exe$/ : /^MCP-Docs-(\d+\.\d+\.\d+)-mac-arm64\.zip$/;
+const EXE = `${APP_NAME}.exe`;
 const MARKETPLACE = 'mcp-docs';
 const PLUGIN = `mcp-docs@${MARKETPLACE}`;
 /** The app's MCP server (desktop/main.js's fixed port), for any MCP client. */
@@ -28,7 +31,8 @@ if (flag('help') || flag('h') || args.some((a) => !a.startsWith('--'))) {
   console.log(`Usage: npx @freeflow-im/mcp-docs [--claude] [--codex] [--skip-app] [--skip-plugins] [--yes]
        npx @freeflow-im/mcp-docs --uninstall [--yes]
 
-Installs the latest MCP Docs desktop app into /Applications (or ~/Applications), and the mcp-docs plugin
+Installs the latest MCP Docs desktop app (on a Mac into /Applications or ~/Applications, on Windows into
+%LOCALAPPDATA%\\Programs\\MCP Docs), and the mcp-docs plugin
 into the coding agents you choose, Claude Code and Codex, which connects them to the app. It asks for each
 agent it finds. Run it again to update them all. Any other MCP client can connect to the app at
 ${MCP_URL}.
@@ -51,6 +55,12 @@ const fail = (msg) => {
 };
 /** Run a program; its output is returned, not shown. */
 const run = (cmd, argv) => spawnSync(cmd, argv, { encoding: 'utf8' });
+/** Run a command found on the PATH, as a terminal would: on Windows the agents' commands are often `.cmd` scripts,
+ * which only a shell runs (the arguments here have no spaces or quotes). */
+const runCommand = (cmd, argv) => (WIN ? spawnSync([cmd, ...argv].join(' '), { encoding: 'utf8', shell: true }) : run(cmd, argv));
+
+/** Where Windows installs the app: for the person (the installer's default), or for everyone. */
+const winAppDirs = () => [path.join(process.env.LOCALAPPDATA ?? path.join(homedir(), 'AppData', 'Local'), 'Programs', APP_NAME), path.join(process.env.ProgramFiles ?? 'C:\\Program Files', APP_NAME)];
 
 /** Where the app goes: /Applications when it can be written to, else the person's own Applications folder. */
 function appsDir() {
@@ -64,8 +74,22 @@ function appsDir() {
   }
 }
 
-/** The app already installed, in either place, and its version. */
+/** The app already installed, in either place, and its version. On Windows `app` is its program. */
 function installedApp() {
+  if (WIN) {
+    for (const dir of winAppDirs()) {
+      const app = path.join(dir, EXE);
+      if (!existsSync(app)) continue;
+      let version = null;
+      try {
+        version = JSON.parse(readFileSync(path.join(dir, 'resources', 'app', 'package.json'), 'utf8')).version ?? null;
+      } catch {
+        // Unreadable: updated below as an older version.
+      }
+      return { app, version };
+    }
+    return null;
+  }
   for (const dir of ['/Applications', path.join(homedir(), 'Applications')]) {
     const app = path.join(dir, `${APP_NAME}.app`);
     if (!existsSync(app)) continue;
@@ -86,10 +110,15 @@ async function latestRelease() {
       if (m) return { version: m[1], url: asset.browser_download_url, name: asset.name, size: asset.size };
     }
   }
-  fail(`No release of ${APP_NAME} for macOS was found on GitHub.`);
+  fail(`No release of ${APP_NAME} for ${WIN ? 'Windows' : 'macOS'} was found on GitHub.`);
 }
 
 const appPids = (app) => {
+  if (WIN) {
+    // Every MCP Docs.exe, the app and the servers it starts for its folders (one installed copy is assumed).
+    const r = run('tasklist', ['/FI', `IMAGENAME eq ${EXE}`, '/FO', 'CSV', '/NH']);
+    return r.status === 0 ? [...r.stdout.matchAll(/^"[^"]+","(\d+)"/gm)].map((m) => m[1]) : [];
+  }
   const r = run('pgrep', ['-f', `${app}/Contents/MacOS/`]);
   return r.status === 0 ? r.stdout.trim().split('\n').filter(Boolean) : [];
 };
@@ -98,7 +127,9 @@ const appPids = (app) => {
 async function quitApp(app, why = 'to update it') {
   if (!appPids(app).length) return false;
   say(`  Quitting ${APP_NAME} ${why}…`);
-  run('osascript', ['-e', `tell application "${app}" to quit`]);
+  // On Windows its windows are asked to close, and it quits (and stops its servers) when the last one has.
+  if (WIN) run('taskkill', ['/IM', EXE]);
+  else run('osascript', ['-e', `tell application "${app}" to quit`]);
   for (let i = 0; i < 30 && appPids(app).length; i++) await new Promise((r) => setTimeout(r, 500));
   if (appPids(app).length) fail(`${APP_NAME} is still running. Quit it and run this again.`);
   return true;
@@ -120,6 +151,7 @@ async function installApp() {
     const res = await fetch(latest.url);
     if (!res.ok || !res.body) fail(`The download failed (${res.status} ${res.statusText}).`);
     await pipeline(Readable.fromWeb(res.body), createWriteStream(zip));
+    if (WIN) return await runWindowsSetup(zip, latest.version, current);
     const out = path.join(work, 'app');
     if (run('ditto', ['-x', '-k', zip, out]).status !== 0) fail('The download could not be unpacked.');
     const unpacked = path.join(out, `${APP_NAME}.app`);
@@ -141,15 +173,31 @@ async function installApp() {
   }
 }
 
+/**
+ * Install the downloaded Windows setup program without its questions: for the person, or over the copy installed for
+ * everyone (which asks Windows for permission). It closes a running app itself; returns the installed program.
+ */
+async function runWindowsSetup(setup, version, current) {
+  const forAll = current && path.dirname(current.app) === winAppDirs()[1];
+  const wasRunning = current ? await quitApp(current.app) : false;
+  say('  Running the setup program…');
+  const r = run(setup, ['/S', ...(forAll ? ['/allusers'] : [])]);
+  const app = installedApp();
+  if (r.status !== 0 || app?.version !== version) fail(`The setup program did not install ${APP_NAME} ${version}${r.status ? ` (exit code ${r.status})` : ''}. Run ${path.basename(setup)} from the release yourself: github.com/${REPO}/releases/latest`);
+  say(`  Installed ${APP_NAME} ${version} in ${path.dirname(app.app)}.`);
+  if (wasRunning) say('  It was running: it starts again below.');
+  return app.app;
+}
+
 /** Run `claude` with these arguments, showing what it says when it fails. */
 function claude(argv) {
-  const r = run('claude', argv);
+  const r = runCommand('claude', argv);
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
 }
 
 /** Run `codex` with these arguments, as `claude` above. */
 function codex(argv) {
-  const r = run('codex', argv);
+  const r = runCommand('codex', argv);
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
 }
 
@@ -161,7 +209,7 @@ const AGENTS = [
   {
     key: 'claude',
     name: 'Claude Code',
-    found: () => run('claude', ['--version']).status === 0,
+    found: () => runCommand('claude', ['--version']).status === 0,
     install: installClaudePlugin,
     next: {
       installed: 'In Claude Code: restart it (or start a new session) to load the plugin, then run /mcp, choose plugin:mcp-docs:mcp-docs and sign in.',
@@ -171,7 +219,7 @@ const AGENTS = [
   {
     key: 'codex',
     name: 'Codex',
-    found: () => run('codex', ['--version']).status === 0,
+    found: () => runCommand('codex', ['--version']).status === 0,
     install: installCodexPlugin,
     next: {
       installed: 'In Codex: sign in once with `codex mcp login mcp-docs`, then start a new session.',
@@ -278,6 +326,10 @@ function installCodexPlugin() {
  * tokens, each folder's index, deleted files), under each name it has had, and macOS's files for it.
  */
 function appData() {
+  if (WIN) {
+    const roaming = process.env.APPDATA ?? path.join(homedir(), 'AppData', 'Roaming');
+    return ['MCP Docs', 'Universal Docs', 'FreeFlow Docs'].map((name) => path.join(roaming, name)).filter((p) => existsSync(p));
+  }
   const lib = path.join(homedir(), 'Library');
   const BUNDLE_ID = 'im.freeflow.docs';
   return [
@@ -290,12 +342,13 @@ function appData() {
   ].filter((p) => existsSync(p));
 }
 
-/** The apps installed, in either place. */
-const installedApps = () => ['/Applications', path.join(homedir(), 'Applications')].map((dir) => path.join(dir, `${APP_NAME}.app`)).filter((p) => existsSync(p));
+/** The apps installed, in either place (on Windows, their programs). */
+const installedApps = () =>
+  (WIN ? winAppDirs().map((dir) => path.join(dir, EXE)) : ['/Applications', path.join(homedir(), 'Applications')].map((dir) => path.join(dir, `${APP_NAME}.app`))).filter((p) => existsSync(p));
 
 /** What it added to Claude Code: the plugin, its marketplace, and an MCP server added by hand (by either name it has had). */
 function claudeThings() {
-  if (run('claude', ['--version']).status !== 0) return { plugin: false, marketplace: false, servers: [] };
+  if (runCommand('claude', ['--version']).status !== 0) return { plugin: false, marketplace: false, servers: [] };
   let plugin = false;
   let marketplace = false;
   try {
@@ -315,7 +368,7 @@ function claudeThings() {
 
 /** What it added to Codex: the plugin and its marketplace. */
 function codexThings() {
-  if (run('codex', ['--version']).status !== 0) return { plugin: false, marketplace: false };
+  if (runCommand('codex', ['--version']).status !== 0) return { plugin: false, marketplace: false };
   let plugin = false;
   let marketplace = false;
   try {
@@ -363,6 +416,13 @@ async function uninstall() {
 
   for (const app of apps) {
     await quitApp(app, 'to remove it');
+    if (WIN) {
+      // Its own uninstaller, which also takes it off Settings › Apps and the Start menu.
+      const dir = path.dirname(app);
+      const r = run(path.join(dir, `Uninstall ${APP_NAME}.exe`), ['/S', ...(dir === winAppDirs()[1] ? ['/allusers'] : [])]);
+      say(r.status === 0 ? `  Removed ${dir}` : `  Could not remove ${dir}: uninstall ${APP_NAME} in Settings › Apps instead.`);
+      continue;
+    }
     rmSync(app, { recursive: true, force: true });
     say(`  Removed ${app}`);
   }
@@ -394,8 +454,8 @@ async function uninstall() {
   say(`\n${APP_NAME} is uninstalled. Restart Claude Code and Codex to let go of the plugin.`);
 }
 
-if (process.platform !== 'darwin' || process.arch !== 'arm64') {
-  fail(`${APP_NAME} is only available for Macs with Apple silicon so far.`);
+if (!WIN && (process.platform !== 'darwin' || process.arch !== 'arm64')) {
+  fail(`${APP_NAME} is only available for Windows and Macs with Apple silicon so far.`);
 }
 
 if (flag('uninstall')) {
@@ -412,10 +472,11 @@ const done = agents.map((agent) => ({ agent, step: agent.install() }));
 
 if (app && !appPids(app).length) {
   // The MCP server is the running app.
-  run('open', ['-a', app]);
+  if (WIN) spawn(app, [], { detached: true, stdio: 'ignore' }).unref();
+  else run('open', ['-a', app]);
   say(`\nStarted ${APP_NAME}.`);
 }
 say(`
-While ${APP_NAME} is running, its MCP server is at ${MCP_URL}. Any MCP client on this Mac that
+While ${APP_NAME} is running, its MCP server is at ${MCP_URL}. Any MCP client on this computer that
 supports streamable HTTP and OAuth can connect to it there; ${APP_NAME} asks you to allow each one.`);
 if (done.length) say(`\nNext:\n${done.map(({ agent, step }) => `  - ${agent.next[step]}`).join('\n')}`);

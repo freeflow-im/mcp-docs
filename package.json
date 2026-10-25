@@ -142,17 +142,12 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "signAndEditExecutable": false
     },
     "nsis": {
+      "artifactName": "MCP-Docs-${version}-win-x64-setup.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },

@@ -152,7 +152,7 @@ type stripping; imports use `.ts` extensions.
   at the root), installed with the app by `npx @freeflow-im/mcp-docs` (`installer/`, its own npm package, which asks
   which agents to add it to and prints the MCP address for any other client; its version, the plugins' and the Claude
   marketplace entry's are the desktop release's: `npm run release -- <version>` sets them all and tags
-  `desktop-v<version>`, and pushing the tag has `.github/workflows/desktop-release.yml` build the app, make the GitHub
+  `desktop-v<version>`, and pushing the tag has `.github/workflows/desktop-release.yml` build the Mac and Windows apps, make the GitHub
   release and publish the installer to npm, with the notes in `release-notes/<version>.md`). A file
   the model opens, creates or imports is shown in the window (`FileHub.onShow`, a `show` message to `main.js`,
   a `universal-show` event to the router), and the window reports the file it shows (`POST /api/local/showing`,
