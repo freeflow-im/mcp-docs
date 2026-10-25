@@ -21,7 +21,9 @@ jobs:
             script: desktop:mac
             files: release/MCP-Docs-*-mac-arm64.zip
           - os: windows-latest
-            script: desktop:win -- -c.win.signAndEditExecutable=true # the app's icon and details on the .exe (it is not signed)
+            # The app's icon and details on the .exe (it is not signed); the publish job below makes the release, not
+            # electron-builder, which would on a CI machine.
+            script: desktop:win -- -c.win.signAndEditExecutable=true --publish never
             files: release/MCP-Docs-*-win-x64-setup.exe
     runs-on: ${{ matrix.os }}
     defaults:
