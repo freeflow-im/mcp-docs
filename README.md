@@ -2,6 +2,8 @@
 
 ![PowerPoint](https://img.icons8.com/color/48/microsoft-powerpoint-2019--v1.png) ![Word](https://img.icons8.com/color/48/microsoft-word-2019--v1.png) ![Excel](https://img.icons8.com/color/48/microsoft-excel-2019--v1.png) ![PDF](https://img.icons8.com/color/48/pdf.png) ![Images](https://img.icons8.com/color/48/image.png)
 
+<video src="marketing/mcp-docs-promo/renders/mcp-docs-promo.mp4" controls></video>
+
 [![Download MCP Docs for macOS](https://img.shields.io/badge/Download-macOS%20%28Apple%20silicon%29-2ea44f?logo=apple)](https://github.com/freeflow-im/mcp-docs/releases/latest)
 [![Download MCP Docs for Windows](https://img.shields.io/badge/Download-Windows%20%28x64%29-0078d4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0wIDBoNy41djcuNUgwek04LjUgMEgxNnY3LjVIOC41ek0wIDguNWg3LjVWMTZIMHpNOC41IDguNUgxNlYxNkg4LjV6Ii8%2BPC9zdmc%2B)](https://github.com/freeflow-im/mcp-docs/releases/latest)
 [![npm](https://img.shields.io/npm/v/@freeflow-im/mcp-docs?label=npx%20%40freeflow-im%2Fmcp-docs)](https://www.npmjs.com/package/@freeflow-im/mcp-docs)
@@ -10,10 +12,6 @@
 MCP Docs is universal document editor, built with "native" AI integration. It started as sort of my own rewrite of Google Docs - but now its some kind of combination of Office suite, Google Docs, Sublime Text and Mac _Preview_. 
 
 It runs locally on your computer, but also runs in the cloud - you can access the cloud version from either the local app or just a browser.
-
-![MCP Docs presentation editor showing a scaled dot-product attention diagram](docs/images/presentation-editor.png)
-
-![MCP Docs spreadsheet editor showing recent YC batch companies](docs/images/spreadsheet-editor.png)
 
 It supports editing all the standard Office documents:
 - Spreadsheets (Excel)
@@ -51,6 +49,11 @@ Besides editing standard Office files (don't need to pay for Office!), and using
 - JSON tree viewer
 
 But probably the biggest feature is **open source** - add your own new features as you need them.
+
+![MCP Docs presentation editor showing a scaled dot-product attention diagram](docs/images/presentation-editor.png)
+
+![MCP Docs spreadsheet editor showing recent YC batch companies](docs/images/spreadsheet-editor.png)
+
 
 ### Single-player
 
