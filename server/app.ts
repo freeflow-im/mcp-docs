@@ -43,7 +43,7 @@ import { openGettingStarted } from './gettingStarted.ts';
 import { isFileId } from './ids.ts';
 import { ImageStore } from './images.ts';
 import { deckPreview, docPreview, markdownPreview, sheetPreview, type FilePreview } from '../shared/preview.ts';
-import { cleanFolderName, cleanFolderPath, folderName, joinFolder } from '../shared/folders.ts';
+import { cleanFolderName, cleanFolderPath, folderName, joinFolder, parentFolder } from '../shared/folders.ts';
 import { FolderStore, type Folders } from './folders.ts';
 import { LISTED_EXTS, listedKind, LocalFileStore, LocalFolder, LocalFolders, LocalSheetStore, type FindByName } from './localStore.ts';
 import { openedFiles, recentFiles, RecentOpens, recentsAvailable, type Recents } from './recents.ts';
@@ -52,6 +52,7 @@ import { mountPlugin } from '../plugin/server/mount.ts';
 import { ToolError } from '../plugin/server/files.ts';
 import { mailerFromEnv, type Mailer } from './mail.ts';
 import { RevisionFeed } from './revisionFeed.ts';
+import { DirWatchers } from './folderWatch.ts';
 import { SheetStore, validateWorkbook } from './sheets.ts';
 import { listSheetCharts, loadLinkedChart, loadLinkedTable } from './linkedTable.ts';
 import { importPptx } from './pptxImport.ts';
@@ -807,8 +808,11 @@ export async function buildApp(opts: AppOptions) {
   const revisions = new RevisionFeed();
   sheets.onRevision = (id, rev) => revisions.publish(id, rev);
   const revisionStreams = new Set<ServerResponse>();
+  // In the desktop app, the directories open editors and lists look at, for changes other programs make.
+  const dirWatchers = folder ? new DirWatchers((dir) => folder.abs(dir)) : null;
   app.addHook('onClose', async () => {
     for (const res of revisionStreams) res.end();
+    dirWatchers?.close();
   });
   app.register(async (r) => {
     r.addHook('preHandler', requireUser);
@@ -825,11 +829,21 @@ export async function buildApp(opts: AppOptions) {
       const send = (rev: string) => res.write(`data: ${JSON.stringify({ rev })}\n\n`);
       send(meta.updatedAt);
       const stop = revisions.watch(id, send);
+      // In the desktop app the file can also be changed by another program: its directory is watched, and a
+      // change the store did not make is a new revision (LocalSheetStore.fileChanged), announced as any other.
+      const rel = dirWatchers && sheets instanceof LocalSheetStore ? sheets.relOf(req.user!.id, id) : null;
+      const unwatch =
+        rel !== null && sheets instanceof LocalSheetStore
+          ? dirWatchers!.watch(parentFolder(rel), (names) => {
+              if (!names || names.has(path.posix.basename(rel))) sheets.fileChanged(rel);
+            })
+          : null;
       // A comment now and then keeps proxies from closing a quiet connection.
       const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
       revisionStreams.add(res);
       res.on('close', () => {
         stop();
+        unwatch?.();
         clearInterval(ping);
         revisionStreams.delete(res);
       });
@@ -1518,6 +1532,26 @@ export async function buildApp(opts: AppOptions) {
         return copying(reply, () => downloadFromWeb(web, copyStores(req), { kind: kind as LibraryKind, id, title: typeof title === 'string' && title.trim() ? title.trim() : undefined }, req.folder, format as DownloadFormat));
       });
     }
+
+    // Server-sent events, an empty `{}` each time something in the folder `folder` changes (a file added, removed,
+    // renamed or written, by this app or another program), so the list showing it can load it again.
+    r.get('/api/local/folder-changes', async (req, reply) => {
+      if (!dirWatchers) return reply.code(404).send({ error: 'Not a folder.' });
+      reply.hijack();
+      const res = reply.raw;
+      // Watching first, so a change made as soon as the stream is open is not missed.
+      const unwatch = dirWatchers.watch(req.folder, () => res.write('data: {}\n\n'));
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      // Nothing is sent until something changes: the headers go now, so the stream counts as open.
+      res.flushHeaders();
+      const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+      revisionStreams.add(res);
+      res.on('close', () => {
+        unwatch();
+        clearInterval(ping);
+        revisionStreams.delete(res);
+      });
+    });
 
     // The file the window shows ({kind, id}, or nothing): what the MCP tools act on when no id is given.
     r.post('/api/local/showing', async (req) => {

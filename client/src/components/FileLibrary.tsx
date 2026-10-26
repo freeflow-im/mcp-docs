@@ -81,7 +81,16 @@ export interface SortOrder {
 const DEFAULT_SORT: SortOrder = { key: 'updatedAt', dir: 'desc' };
 const SORT_STORAGE_KEY = 'ui.fileSort';
 const VIEW_STORAGE_KEY = 'ui.fileView';
+const FOLDERS_OPEN_KEY = 'ui.foldersOpen';
 type View = 'list' | 'grid';
+
+function loadFoldersOpen(): boolean {
+  try {
+    return localStorage.getItem(FOLDERS_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function loadView(): View {
   try {
@@ -486,6 +495,15 @@ export function FileLibrary(props: FileLibraryProps) {
   /** Show only one type of file (the menu next to the view buttons); folders are not listed while it is on. */
   const [typeFilter, setTypeFilter] = useState<TypeGroup | 'all'>('all');
   const [viewChoice, setViewChoice] = useState<View>(loadView);
+  const [foldersOpen, setFoldersOpenState] = useState(loadFoldersOpen);
+  const setFoldersOpen = (open: boolean) => {
+    setFoldersOpenState(open);
+    try {
+      localStorage.setItem(FOLDERS_OPEN_KEY, open ? '1' : '0');
+    } catch {
+      // Not remembered, that's all.
+    }
+  };
   const view: View = props.thumbnail ? viewChoice : 'list';
   const setView = (v: View) => {
     setViewChoice(v);
@@ -611,6 +629,18 @@ export function FileLibrary(props: FileLibraryProps) {
   const up = !results && !otherShown && !q && typeFilter === 'all' ? props.up : undefined;
   const upDrop = up?.folder !== undefined ? dropTarget(up.folder) : {};
   const upClass = up?.folder !== undefined ? dropClass(up.folder) : '';
+  // A folder's folders are one row that opens to list them (closed unless the user left it open), so the files are
+  // in reach without scrolling past them. A search, or a folder with no files, lists them as they are.
+  const foldersFold = folders.length > 0 && !results && !q && visible.length > 0;
+  const foldersShown = foldersFold && !foldersOpen ? [] : folders;
+  const foldersLabel = `${folders.length} ${folders.length === 1 ? 'folder' : 'folders'}`;
+  // Dragging a file over the closed row opens it, so a folder in it can take the drop.
+  const foldersToggle = {
+    onClick: () => setFoldersOpen(!foldersOpen),
+    onDragEnter: () => !foldersOpen && setFoldersOpen(true),
+    title: foldersOpen ? 'Hide the folders' : 'Show the folders',
+    'aria-expanded': foldersOpen,
+  };
   const openFolder = (path: string) => {
     // A page that keeps the search drops it by going to the folder's own address.
     if (!props.search) setFilter('');
@@ -900,7 +930,17 @@ export function FileLibrary(props: FileLibraryProps) {
                 </div>
               </div>
             )}
-            {folders.map((f) => (
+            {foldersFold && (
+              <button className="folders-toggle grid" {...foldersToggle}>
+                <span className={`folders-chevron${foldersOpen ? ' open' : ''}`} aria-hidden="true">
+                  <svg viewBox="0 0 12 12" width="12" height="12">
+                    <path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+                <FolderIcon /> {foldersLabel}
+              </button>
+            )}
+            {foldersShown.map((f) => (
               <div key={`folder:${f.path}`} className={`file-card${dropClass(f.path)}`} onClick={() => openFolder(f.path)} {...dropTarget(f.path)}>
                 <div className="file-thumb folder">
                   <FolderIcon size={64} />
@@ -975,8 +1015,22 @@ export function FileLibrary(props: FileLibraryProps) {
                   <td />
                 </tr>
               )}
-              {folders.map((f) => (
-                <tr key={`folder:${f.path}`} className={dropClass(f.path).trim() || undefined} onClick={() => openFolder(f.path)} {...dropTarget(f.path)}>
+              {foldersFold && (
+                <tr className="folders-toggle-row" onClick={foldersToggle.onClick} onDragEnter={foldersToggle.onDragEnter}>
+                  <td colSpan={5}>
+                    <button className="folders-toggle" {...foldersToggle} onClick={(e) => (e.stopPropagation(), foldersToggle.onClick())}>
+                      <span className={`folders-chevron${foldersOpen ? ' open' : ''}`} aria-hidden="true">
+                        <svg viewBox="0 0 12 12" width="12" height="12">
+                          <path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                      <FolderIcon /> {foldersLabel}
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {foldersShown.map((f) => (
+                <tr key={`folder:${f.path}`} className={`${foldersFold ? 'in-fold' : ''}${dropClass(f.path)}`.trim() || undefined} onClick={() => openFolder(f.path)} {...dropTarget(f.path)}>
                   <td>
                     <span className="sheet-title">
                       <FolderIcon /> {f.name}

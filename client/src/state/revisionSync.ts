@@ -21,8 +21,8 @@ export interface Taken {
 /** What to tell the user when the editor took a newer version. */
 export function takenMessage(t: Taken): string {
   return t.lostEdits
-    ? 'This file was changed somewhere else (another tab, say) before your last edit was saved, so it now shows that version.'
-    : 'Updated with changes saved somewhere else, such as another tab.';
+    ? 'This file was changed somewhere else (another tab or app, say) before your last edit was saved, so it now shows that version.'
+    : 'Updated with changes saved somewhere else, such as another tab or app.';
 }
 
 /** The editor: its saver, and how it swaps in a version saved elsewhere. */

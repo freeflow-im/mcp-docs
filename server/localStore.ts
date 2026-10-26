@@ -506,8 +506,9 @@ export class LocalSheetStore extends SheetStore {
         this.db
           .prepare('INSERT INTO sheets (id, owner_id, kind, format, title, folder, file, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(this.newId(), ownerId, type.kind, type.format, title, folder, f.rel, f.birthtime, f.mtime);
-      } else if (r.updated_at !== f.mtime || r.title !== title || r.folder !== folder) {
-        this.db.prepare('UPDATE sheets SET updated_at = ?, title = ?, folder = ? WHERE id = ?').run(f.mtime, title, folder, r.id);
+      } else {
+        if (r.title !== title || r.folder !== folder) this.db.prepare('UPDATE sheets SET title = ?, folder = ? WHERE id = ?').run(title, folder, r.id);
+        this.retime(r, f.mtime);
       }
     }
     if (adoptOnly) return;
@@ -550,6 +551,30 @@ export class LocalSheetStore extends SheetStore {
     return r ? this.folder.abs(r.file) : null;
   }
 
+  /** The path inside the folder of a document's file, or null when there is no such document. */
+  relOf(ownerId: string, id: string): string | null {
+    return this.row(ownerId, id)?.file ?? null;
+  }
+
+  /** The file at `rel` may have been changed by another program (folderWatch.ts): see `retime`. */
+  fileChanged(rel: string): void {
+    const r = this.db.prepare('SELECT id, updated_at FROM sheets WHERE file = ?').get(rel) as Pick<SheetRow, 'id' | 'updated_at'> | undefined;
+    const mtime = r && this.folder.mtime(rel);
+    if (r && mtime) this.retime(r, mtime);
+  }
+
+  /**
+   * A file's time is not the one known: something else wrote it, so the document has a new revision, announced
+   * to its open editors (onRevision) so they load it, whichever request or watcher noticed first. The store's own
+   * writes are known by the time anything looks, and announced by the save itself.
+   */
+  private retime(r: Pick<SheetRow, 'id' | 'updated_at'>, mtime: string): void {
+    if (mtime === r.updated_at) return;
+    this.db.prepare('UPDATE sheets SET updated_at = ? WHERE id = ?').run(mtime, r.id);
+    r.updated_at = mtime;
+    this.onRevision?.(r.id, mtime);
+  }
+
   /** A row is only as good as its file: one that was removed is gone, one that was edited has a new time. */
   protected override row(ownerId: string, id: string, kind?: DocKind): SheetRow | undefined {
     const r = super.row(ownerId, id, kind);
@@ -559,10 +584,7 @@ export class LocalSheetStore extends SheetStore {
       this.db.prepare('DELETE FROM sheets WHERE id = ?').run(r.id);
       return undefined;
     }
-    if (mtime !== r.updated_at) {
-      this.db.prepare('UPDATE sheets SET updated_at = ? WHERE id = ?').run(mtime, r.id);
-      r.updated_at = mtime;
-    }
+    this.retime(r, mtime);
     return r;
   }
 

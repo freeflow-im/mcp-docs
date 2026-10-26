@@ -314,6 +314,13 @@ function FileList() {
     arrived.current = true;
   }, [agentRunning, folder]);
   useEffect(() => setItems(null), [folder]);
+  // In the desktop app, other programs add, remove and change files in the folder too: the list follows them.
+  useEffect(() => {
+    if (!local || recents || typeof EventSource === 'undefined') return;
+    const events = new EventSource(`/api/local/folder-changes?folder=${encodeURIComponent(folder)}`);
+    events.onmessage = () => void load();
+    return () => events.close();
+  }, [local, recents, folder]);
   // Back at a list, it is where it was scrolled to.
   useListingScroll(query, recents ? recentFiles !== null : items !== null && listed === folder);
 

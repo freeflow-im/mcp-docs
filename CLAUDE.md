@@ -241,7 +241,10 @@ type stripping; imports use `.ts` extensions.
   revision loaded and the server answers 409 when it changed, and `GET /api/revisions/:id` (server-sent events,
   `server/revisionFeed.ts`, fed by `SheetStore.onRevision`) announces each new one so an editor with nothing
   unsaved reloads (`client/src/state/revisionSync.ts`). The feed is per process; more than one server node
-  would need shared pub/sub for it.
+  would need shared pub/sub for it. In the desktop app other programs change files too: the directories open editors and lists look at
+  are watched (`DirWatchers`, `server/folderWatch.ts`, not recursively), a file whose time is not the one the store
+  knows is a new revision (`LocalSheetStore.fileChanged`/`retime`), and `GET /api/local/folder-changes?folder=` tells
+  the home page's list to load again.
 - Folders (`shared/folders.ts`): a folder is named by its path (`Reports/2026`, `''` for the top). Files
   carry it in the `folder` column (`SheetMeta.folder`, `StoredFile.folder`); the folders themselves are
   rows on the server (`FolderStore`, `server/folders.ts`) and directories in the desktop app
