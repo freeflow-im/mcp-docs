@@ -3,6 +3,8 @@ import { nameWithExt, titleBase } from '../../../shared/docNames.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
+import { TitleInput } from '../components/TitleInput.tsx';
 import { docNode, docSchema, docStyleCss, docStyleOf, PAGE_SIZES, type BlockType, type Doc } from '../../../shared/doc.ts';
 import { docToMarkdown } from '../../../shared/docMarkdown.ts';
 import { safeLinkUrl } from '../../../shared/links.ts';
@@ -165,7 +167,6 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
   };
   const [meta, setMeta] = useState(initialMeta);
   useRegisterDoc(ctl, meta);
-  const [title, setTitle] = useState(initialMeta.title);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -364,7 +365,6 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
   const rename = async (t: string) => {
     const { meta: m } = await api.renameDoc(meta.id, t);
     setMeta(m);
-    setTitle(m.title);
   };
 
   const blockItem = (type: BlockType, label: string, shortcut?: string): MenuItem => ({ label, shortcut, checked: ctl.currentBlock() === type, action: () => ctl.setBlockType(type) });
@@ -515,25 +515,7 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
         <div className="wb-titles">
           <div className="wb-title-row">
             <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
-            <input
-              className="wb-title"
-              value={title}
-              aria-label="Document name"
-              size={Math.max(8, title.length + 1)}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => {
-                const t = title.trim();
-                if (t && t !== meta.title) rename(t).catch((e: Error) => notify(e.message));
-                else setTitle(meta.title);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                if (e.key === 'Escape') {
-                  setTitle(meta.title);
-                  setTimeout(() => (e.target as HTMLInputElement).blur());
-                }
-              }}
-            />
+            <TitleInput title={meta.title} label="Document name" onRename={rename} onError={notify} />
             <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>
             {office.chip}
           </div>
@@ -556,6 +538,7 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
           </nav>
         </div>
         <div className="wb-user">
+          <FileSearchButton />
           <AgentButton />
           <Account before={() => ctl.saver.flush()} />
         </div>

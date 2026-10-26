@@ -6155,6 +6155,131 @@ img.thumb-image {
   pointer-events: none;
 }
 
+/* Find a file (FileSearch): the header's button and its dialog. */
+.file-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal.file-search {
+  width: min(560px, calc(100vw - 32px));
+}
+.file-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.file-search-input:focus {
+  outline: 2px solid var(--blue);
+  border-color: transparent;
+}
+.file-search-note {
+  margin: 14px 2px 4px;
+  font-size: 13px;
+}
+.file-search-heading {
+  margin: 14px 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.file-search-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: min(420px, 55vh);
+  overflow-y: auto;
+}
+.file-search-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.file-search-list li.selected {
+  background: #eef3fd;
+}
+.file-search-list li > svg {
+  flex-shrink: 0;
+}
+.file-search-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-search-where {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.file-search-list .open-tab-btn {
+  margin: 0 0 0 auto;
+  flex-shrink: 0;
+}
+.file-search-more {
+  cursor: default;
+  font-size: 12px;
+}
+
+/* The row that opens and closes a folder's folders in the file list (FileLibrary): laid out as a folder's row, its
+   icon in the same column, with the chevron in the margin before it, and darker than the folders it holds. */
+.folders-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.folders-toggle .folder-icon {
+  color: #3c4043;
+  flex-shrink: 0;
+}
+.folders-toggle.grid {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 4px 2px 4px 18px;
+}
+.folders-chevron {
+  position: absolute;
+  left: -15px;
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.folders-toggle.grid .folders-chevron {
+  left: 0;
+}
+/* The folders the row opens are indented under it. */
+.sheet-list tr.in-fold td:first-child {
+  padding-left: 26px;
+}
+.folders-chevron.open {
+  transform: rotate(90deg);
+}
+.folders-toggle:hover .folders-chevron {
+  color: var(--text);
+}
+
 /* The hosted app's front page for visitors (LandingPage). */
 .app-main:has(> .landing) {
   scroll-behavior: smooth;

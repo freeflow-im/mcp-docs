@@ -16,7 +16,9 @@ import { AgentButton } from '../agent/AgentPanel.tsx';
 import { FILE_CHANGED_EVENT, useRegisterFile } from '../agent/AgentProvider.tsx';
 import { api } from '../api.ts';
 import { fileIcon, formatFileSize } from '../components/FileChip.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { TitleInput } from '../components/TitleInput.tsx';
 import { HomeIcon } from '../components/Logo.tsx';
 import { useFavicon } from '../favicon.ts';
 import { isPowerPointFile, isWordFile, titleFromFileName } from '../importFile.ts';
@@ -148,9 +150,10 @@ export function FilePage() {
         </Link>
         <span className="file-page-title">
           {file && <FolderCrumbs folder={file.folder} />}
-          {file?.filename ?? ''}
+          {file && <TitleInput title={file.filename} label="File name" onRename={(name) => api.renameFile(file.id, name).then((r) => setFile(r.file))} onError={setError} />}
         </span>
         <div className="home-user">
+          <FileSearchButton />
           {file?.type === HTML_TYPE && (
             <button className={`btn${editing ? ' active' : ''}`} onClick={() => setEditing(!editing)} title={editing ? 'Run the page as a browser would, with its scripts and links working' : "Select, edit, delete and recolor the page's elements"}>
               {editing ? 'Preview' : 'Edit'}

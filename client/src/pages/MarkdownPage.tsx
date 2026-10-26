@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nameWithExt } from '../../../shared/docNames.ts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
+import { TitleInput } from '../components/TitleInput.tsx';
 import { markdownTitle, type MarkdownDoc } from '../../../shared/markdown.ts';
 import type { SheetMeta } from '../../../shared/types.ts';
 import { AgentButton } from '../agent/AgentPanel.tsx';
@@ -134,7 +136,6 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
   const { open: agentOpen } = useAgent();
   const [meta, setMeta] = useState(initialMeta);
   useRegisterMarkdown(ctl, meta);
-  const [title, setTitle] = useState(initialMeta.title);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -253,7 +254,6 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
   const rename = async (t: string) => {
     const { meta: m } = await api.renameMarkdown(meta.id, t);
     setMeta(m);
-    setTitle(m.title);
   };
 
   /** File → Import: replace the text with a .md file's (after confirming when there is text to lose). */
@@ -350,25 +350,7 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
         <div className="wb-titles">
           <div className="wb-title-row">
             <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
-            <input
-              className="wb-title"
-              value={title}
-              aria-label="Document name"
-              size={Math.max(8, title.length + 1)}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => {
-                const t = title.trim();
-                if (t && t !== meta.title) rename(t).catch((e: Error) => notify(e.message));
-                else setTitle(meta.title);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                if (e.key === 'Escape') {
-                  setTitle(meta.title);
-                  setTimeout(() => (e.target as HTMLInputElement).blur());
-                }
-              }}
-            />
+            <TitleInput title={meta.title} label="Document name" onRename={rename} onError={notify} />
             <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>
           </div>
           <nav className="menubar" onMouseDown={(e) => e.stopPropagation()}>
@@ -393,6 +375,7 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
           <button className={`btn${showPreview ? ' active' : ''}`} aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)} title="Show or hide the rendered preview">
             Preview
           </button>
+          <FileSearchButton />
           <AgentButton />
           <Account before={() => ctl.saver.flush()} />
         </div>

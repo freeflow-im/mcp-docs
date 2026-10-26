@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nameWithExt } from '../../../shared/docNames.ts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
+import { TitleInput } from '../components/TitleInput.tsx';
 import { cellKey } from '../../../shared/cellref.ts';
 import type { SheetMeta, Workbook } from '../../../shared/types.ts';
 import { AgentButton } from '../agent/AgentPanel.tsx';
@@ -173,7 +175,6 @@ function Workbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta: Sh
   const [notKept, setNotKept] = useState(initialNotKept);
   useRegisterSheet(ctl, meta);
   useFavicon('sheet');
-  const [title, setTitle] = useState(initialMeta.title);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -250,7 +251,6 @@ function Workbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta: Sh
   const renameSheet = async (t: string) => {
     const { sheet } = await api.renameSheet(meta.id, t);
     setMeta(sheet);
-    setTitle(sheet.title);
   };
 
   const host: CommandHost = useMemo(
@@ -391,25 +391,7 @@ function Workbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta: Sh
         <div className="wb-titles">
           <div className="wb-title-row">
             <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
-            <input
-              className="wb-title"
-              value={title}
-              aria-label="Spreadsheet name"
-              size={Math.max(8, title.length + 1)}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => {
-                const t = title.trim();
-                if (t && t !== meta.title) renameSheet(t).catch((e: Error) => notify(e.message));
-                else setTitle(meta.title);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                if (e.key === 'Escape') {
-                  setTitle(meta.title);
-                  setTimeout(() => (e.target as HTMLInputElement).blur());
-                }
-              }}
-            />
+            <TitleInput title={meta.title} label="Spreadsheet name" onRename={renameSheet} onError={notify} />
             <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>
             {meta.format === 'csv' && (
               <span className="format-chip" title="This is a CSV file: edits are saved as CSV. Formatting, more sheets and other spreadsheet features need it converted to a spreadsheet (File → Convert to spreadsheet).">
@@ -465,6 +447,7 @@ function Workbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta: Sh
           </nav>
         </div>
         <div className="wb-user">
+          <FileSearchButton />
           <AgentButton />
           <Account before={() => ctl.saver.flush()} />
         </div>

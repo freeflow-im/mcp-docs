@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { nameWithExt } from '../../../shared/docNames.ts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
+import { TitleInput } from '../components/TitleInput.tsx';
 import { LAYOUT_IDS, THEME_IDS, THEMES, type Deck } from '../../../shared/deck.ts';
 import type { SheetMeta } from '../../../shared/types.ts';
 import { AgentButton } from '../agent/AgentPanel.tsx';
@@ -157,7 +159,6 @@ function DeckWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta
   };
   const [meta, setMeta] = useState(initialMeta);
   useRegisterDeck(ctl, meta);
-  const [title, setTitle] = useState(initialMeta.title);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -463,7 +464,6 @@ function DeckWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta
   const rename = async (t: string) => {
     const { meta: m } = await api.renameDeck(meta.id, t);
     setMeta(m);
-    setTitle(m.title);
   };
 
   const slideMenu = (index: number): MenuItem[] => [
@@ -607,25 +607,7 @@ function DeckWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta
             <div className="wb-titles">
               <div className="wb-title-row">
                 <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
-                <input
-                  className="wb-title"
-                  value={title}
-                  aria-label="Presentation name"
-                  size={Math.max(8, title.length + 1)}
-                  onChange={(e) => setTitle(e.target.value)}
-                  onBlur={() => {
-                    const t = title.trim();
-                    if (t && t !== meta.title) rename(t).catch((e: Error) => notify(e.message));
-                    else setTitle(meta.title);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    if (e.key === 'Escape') {
-                      setTitle(meta.title);
-                      setTimeout(() => (e.target as HTMLInputElement).blur());
-                    }
-                  }}
-                />
+                <TitleInput title={meta.title} label="Presentation name" onRename={rename} onError={notify} />
                 <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>
                 {office.chip}
               </div>
@@ -648,6 +630,7 @@ function DeckWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta
               </nav>
             </div>
             <div className="wb-user">
+              <FileSearchButton />
               <AgentButton />
               <Account before={() => ctl.saver.flush()} />
             </div>
