@@ -26,6 +26,10 @@ But also offers quite capable editing for:
  
 The app is a bit of a "bridge" between traditional productivity suites and the AI agents world.
 
+
+https://github.com/user-attachments/assets/6b2ee485-f280-4a36-839e-88e427dc4a7f
+
+
 ## Using *MCP*
 
 MCP Docs offers two **_agent_** experiences:
