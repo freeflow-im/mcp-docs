@@ -2,6 +2,7 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { LEGAL_PATHS, legalPage } from './legal.ts';
 import { llmsTxt } from './llms.ts';
+import { scratchPadName } from '../shared/docNames.ts';
 import { sniffImageType } from './importFile.ts';
 import { fetchPublicFile, WebFetchError } from './webFetch.ts';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -70,18 +71,7 @@ export const LOCAL_COOKIE = 'local';
 const GOOGLE_STATE_COOKIE = 'gstate';
 /** The desktop app's scratch pads: Markdown files in this folder under the home folder. */
 export const SCRATCH_DIR = path.join('.config', 'mcp-docs');
-const SCRATCH_NAME = 'Scratch pad';
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-
-/** A new scratch pad's name: "Scratch pad.md", then the day it was made ("Scratch pad-oct05.md", "Scratch pad-oct05-2.md"). */
-export function scratchPadName(taken: (name: string) => boolean, now = new Date()): string {
-  if (!taken(`${SCRATCH_NAME}.md`)) return `${SCRATCH_NAME}.md`;
-  const day = `${SCRATCH_NAME}-${MONTHS[now.getMonth()]}${String(now.getDate()).padStart(2, '0')}`;
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? `${day}.md` : `${day}-${n}.md`;
-    if (!taken(name)) return name;
-  }
-}
+export { scratchPadName };
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -169,6 +159,10 @@ export interface AppOptions {
     claudeAgent?: Partial<ClaudeAgentOptions>;
     /** Show how to connect an agent to the app's MCP server, in the desktop app's dialog. */
     connectAgent?: () => void;
+    /** Show a file or folder of the folder in the system's file browser (Finder, File Explorer): a folder opened, a file selected in its own. */
+    reveal?: (target: string) => void;
+    /** Drag a file of the folder out of the window as the file itself, to another app (a drag the system runs, from the window in front). */
+    startDrag?: (file: string) => void;
     /**
      * The files last opened on this machine, as Spotlight knows them (server/recents.ts); null where there is no
      * such list. Recents lists them below the files opened in the app. Tests give their own.
@@ -1701,6 +1695,35 @@ export async function buildApp(opts: AppOptions) {
       return { places: usual.map((d) => ({ name: d === home ? 'HOME' : path.basename(d), path: d })) };
     });
 
+    // The absolute path of a file of the folder (its kind and id), or of a folder of it (the request's `folder`).
+    const localTarget = (req: FastifyRequest): string | null => {
+      const { kind, id } = (req.body ?? {}) as { kind?: unknown; id?: unknown };
+      if (id === undefined) return path.join(folder!.root, ...req.folder.split('/').filter(Boolean));
+      if (typeof id !== 'string') return null;
+      if (kind === 'file') return (storedFiles as LocalFileStore).get(req.user!.id, id)?.file ?? null;
+      if (kind === 'doc' || kind === 'deck' || kind === 'sheet' || kind === 'markdown') return (sheets as LocalSheetStore).fileOf(req.user!.id, id);
+      return null;
+    };
+
+    // Show a file ({kind, id}) or a folder (`folder`) in Finder or File Explorer.
+    r.post('/api/local/reveal', async (req, reply) => {
+      if (!folder || !opts.local?.reveal) return reply.code(400).send({ error: 'Files cannot be shown in the file browser here.' });
+      const target = localTarget(req);
+      if (!target || !existsSync(target)) return reply.code(404).send({ error: 'This file is no longer there.' });
+      opts.local.reveal(target);
+      return { ok: true };
+    });
+
+    // Drag a file ({kind, id}) out of the window, as the file itself: another app (Finder, a video editor) takes it.
+    r.post('/api/local/drag', async (req, reply) => {
+      if (!folder || !opts.local?.startDrag) return reply.code(400).send({ error: 'Files cannot be dragged out here.' });
+      if ((req.body as { id?: unknown } | undefined)?.id === undefined) return reply.code(400).send({ error: 'Give the kind and id of the file.' });
+      const target = localTarget(req);
+      if (!target || !existsSync(target)) return reply.code(404).send({ error: 'This file is no longer there.' });
+      opts.local.startDrag(target);
+      return { ok: true };
+    });
+
     // Show the desktop app's Connect an Agent dialog.
     r.post('/api/local/connect-agent', async (_req, reply) => {
       if (!opts.local?.connectAgent) return reply.code(400).send({ error: 'Agents cannot be connected here.' });
@@ -1995,7 +2018,7 @@ export async function buildApp(opts: AppOptions) {
     });
 
     // --- Agents signed in to the plugin's MCP endpoint with a device code (none when the plugin is not mounted) ---
-    r.get('/api/settings/agents', async (req) => ({ enabled: !!pluginOAuth, agents: pluginOAuth?.connectedAgents(req.user!.id) ?? [] }));
+    r.get('/api/settings/agents', async (req) => ({ enabled: !!pluginOAuth, agents: pluginOAuth?.connectedAgents(req.user!.id) ?? [], ...(pluginOAuth ? { mcpUrl: `${originOf(req)}/mcp/v2` } : {}) }));
 
     r.delete('/api/settings/agents/:id', async (req, reply) => {
       const { id } = req.params as { id: string };

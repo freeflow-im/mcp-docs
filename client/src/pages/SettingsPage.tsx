@@ -243,12 +243,28 @@ export function SettingsPage() {
   );
 }
 
+/** What to paste to an agent so it connects itself to the MCP server at `url`. */
+function agentInstruction(url: string): string {
+  const origin = new URL(url).origin;
+  return [
+    `Connect to ${appName()}, where my documents, presentations and spreadsheets are, as a remote MCP server (streamable HTTP, with OAuth sign-in): ${url}`,
+    '',
+    `- Claude Code: claude mcp add --transport http universal-docs ${url}`,
+    `- Codex: codex mcp add universal-docs --url ${url}`,
+    `- Another MCP client: add a remote (HTTP) server at that address. If it only runs stdio servers, or cannot open a browser to sign in, use: npx -y mcp-remote ${url} --device-code — it prints an address and a code; show them to me so I can allow you.`,
+    '',
+    `Full instructions: ${origin}/llms.txt`,
+  ].join('\n');
+}
+
 const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** Agents signed in with a device code (mcp-remote --device-code, say). Disconnecting one revokes its tokens at once. */
 function ConnectedAgents() {
   const [agents, setAgents] = useState<ConnectedAgent[] | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [mcpUrl, setMcpUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -258,6 +274,7 @@ function ConnectedAgents() {
       .then((res) => {
         setEnabled(res.enabled);
         setAgents(res.agents);
+        setMcpUrl(res.mcpUrl ?? null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -275,9 +292,38 @@ function ConnectedAgents() {
     }
   };
 
+  // Home's Connect your agent tile comes here (#agents): this section is shown once it is known to be there.
+  useEffect(() => {
+    if (enabled && window.location.hash === '#agents') document.getElementById('agents')?.scrollIntoView({ block: 'start' });
+  }, [enabled]);
+
+  const copyInstruction = async () => {
+    if (!mcpUrl) return;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(agentInstruction(mcpUrl));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('The instruction could not be copied.');
+    }
+  };
+
   if (!enabled && !error) return null;
   return (
-    <section className="home-inner changes">
+    <section className="home-inner changes" id="agents">
+      {mcpUrl && (
+        <div className="mcp-address">
+          <h2>MCP address</h2>
+          <p className="changes-intro">Add this address to an agent (Claude Code, Codex, Cursor and others) as a remote MCP server, and it can open, read and edit your files once you allow it.</p>
+          <div className="mcp-address-row">
+            <code className="mcp-address-url">{mcpUrl}</code>
+            <button type="button" className="btn" onClick={() => void copyInstruction()}>
+              {copied ? 'Copied' : 'Copy agent instruction'}
+            </button>
+          </div>
+        </div>
+      )}
       <h2>Connected agents</h2>
       <p className="changes-intro">Agents you signed in with a device code can read and change your files. Disconnect one to stop its access right away; it would have to be signed in again.</p>
       {error && <div className="form-error">{error}</div>}

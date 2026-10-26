@@ -2202,6 +2202,25 @@ button.agent-tool-label:hover {
   color: var(--muted);
   word-break: break-all;
 }
+.mcp-address {
+  margin-bottom: 28px;
+}
+.mcp-address-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.mcp-address-url {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  word-break: break-all;
+  user-select: all;
+}
 .change-meta,
 .change-note {
   font-size: 12.5px;
@@ -4850,6 +4869,7 @@ button.agent-tool-label:hover {
   overflow-wrap: anywhere;
 }
 .sheet-title > svg,
+.sheet-title > .cloud-icon,
 .sheet-title > .file-chip-icon,
 .sheet-title > .tree-indent,
 .sheet-title > .tree-elbow {
@@ -6133,4 +6153,22 @@ img.thumb-image {
   font: inherit;
   color: #1f1f1f;
   background: #fff;
+}
+
+/* The web's files are in the cloud: a faint cloud over each file's icon in the list. */
+.cloud-icon {
+  position: relative;
+  display: inline-flex;
+}
+.cloud-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 8px;
+  fill: #fff;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  opacity: 0.75;
+  pointer-events: none;
 }

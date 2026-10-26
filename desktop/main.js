@@ -355,6 +355,28 @@ function serverFor(dir) {
   return starting.get(dir);
 }
 
+/** `target` is the folder `dir` or inside it: a server only ever names its own folder's files. */
+const inFolder = (target, dir) => {
+  const rel = path.relative(dir, target);
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+
+/** Show a file or folder in Finder (File Explorer on Windows): a folder opened, a file selected in its own. */
+function reveal(target) {
+  if (isDir(target)) void shell.openPath(target);
+  else shell.showItemInFolder(target);
+}
+
+/**
+ * Drag a file out of `win` as the file itself, so another app (Finder, a video editor) takes it. The page has
+ * cancelled its own drag of the file's row; the pointer is still down, so the system's drag takes over from here.
+ */
+async function dragOut(file, win) {
+  if (!win || win.isDestroyed() || !statSync(file).isFile()) return;
+  const icon = await app.getFileIcon(file, { size: 'normal' });
+  if (!win.isDestroyed()) win.webContents.startDrag({ file, icon });
+}
+
 /** Start a server for the folder; resolves once it is listening. */
 async function startServer(dir) {
   const token = randomBytes(32).toString('base64url');
@@ -385,6 +407,8 @@ async function startServer(dir) {
     if (msg && typeof msg.openFolder === 'string') void openFolder(msg.openFolder, msg.folder ? `/?folder=${encodeURIComponent(msg.folder)}` : '/', msg.inTab ? null : windowFor(server)).catch(failed);
     if (msg?.chooseFolder) void chooseFolder(windowFor(server), msg.inTab === true).catch(failed);
     if (msg?.connectAgent) void connectAgent().catch(failed);
+    if (msg && typeof msg.reveal === 'string' && inFolder(msg.reveal, server.dir)) reveal(msg.reveal);
+    if (msg && typeof msg.drag === 'string' && inFolder(msg.drag, server.dir)) void dragOut(msg.drag, windowFor(server)).catch(() => {});
     if (msg && typeof msg.show === 'string' && msg.show.startsWith('/')) showPage(msg.show, server);
     if (msg && typeof msg.fileChanged === 'string') fileChanged(msg.fileChanged, server);
     if (msg && typeof msg.pdf === 'string') void printPdf(msg).then((answer) => child.connected && child.send(answer));

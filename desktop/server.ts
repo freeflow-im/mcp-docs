@@ -41,6 +41,8 @@ const app = await buildApp({
     openFolder: (dir, inTab = false, folder) => process.send?.({ openFolder: dir, inTab, folder }),
     chooseFolder: (inTab = false) => process.send?.({ chooseFolder: true, inTab }),
     connectAgent: () => process.send?.({ connectAgent: true }),
+    reveal: (target) => process.send?.({ reveal: target }),
+    startDrag: (file) => process.send?.({ drag: file }),
     // A search asks Spotlight before it walks the folder.
     findByName: process.platform === 'darwin' ? spotlightFind : null,
     web,

@@ -86,7 +86,11 @@ type stripping; imports use `.ts` extensions.
   open in a window has a server of its own, stopped when its last window closes; opening a folder (Open Folder…, a
   file of Recents outside it) changes only the window it was asked in. File › New Tab (⌘T, `newTab`) opens the
   folder and list of the window in front. A right-click the page leaves alone gets the menu a browser would show (copy or
-  save a picture, links, text, spelling: `desktop/contextMenu.js`). The servers' token cookies are on one host, so each has its own cookie
+  save a picture, links, text, spelling: `desktop/contextMenu.js`). Open in Finder (File Explorer on Windows: a file's and a folder's menu in the list, the
+  folder button's menu, each editor's File menu) is `POST /api/local/reveal`, which `main.js` does with `shell`; a file
+  dragged out of the list is the file itself to other apps (Finder, a video editor): the page cancels its own drag and
+  asks `POST /api/local/drag`, and `main.js` runs the system's (`webContents.startDrag`, `dragOut`). Dropped on a folder
+  of the list it still moves there (`FileLibrary`'s `onDragOut`). The servers' token cookies are on one host, so each has its own cookie
   name (`local.cookie`, `LOCAL_COOKIE`). `buildApp({ local: { dir, token } })` swaps in the
   folder-backed stores of `server/localStore.ts` (`LocalSheetStore` and `LocalFileStore`, subclasses that
   override the on-disk hooks of `SheetStore` and `FileStore`: real `.md`/`.csv` files, `.ffsheet`/`.ffslides`/
@@ -139,6 +143,9 @@ type stripping; imports use `.ts` extensions.
   the open folder the window moves to that folder, as Open file by path… does, but keeps the folder it came from
   (`/open?…&backDir=&backFolder=`, `returnTo` in `client/src/listing.ts`): the editor's breadcrumbs show it, and a list
   asked for there (breadcrumbs, the logo, Home) moves the window back to it (`HomePage`, `POST /api/local/return`).
+  On the web the tile's scratch pads are the Markdown documents in the user's `Scratch pads` folder (`ScratchPadTile`), and
+  Connect your agent goes to Settings (`#agents`), which shows the hosted MCP address (`mcpUrl` from `/api/settings/agents`)
+  with Copy agent instruction.
   The desktop app is also an MCP server for agents on the same machine (Claude Code, say), named MCP Docs
   (`mcp-docs`; the hosted one is MCP Docs too from version 2, with the id `universal-docs`): `server/localMcp.ts`
   serves the ChatGPT plugin's model tools (`plugin/server`, the newest version, no UI parts) over the open

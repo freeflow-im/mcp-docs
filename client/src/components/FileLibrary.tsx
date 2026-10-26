@@ -201,6 +201,16 @@ export interface FileLibraryProps {
   };
   /** Download a folder and everything in it. Adds "Download" to a folder's menu. */
   onDownloadFolder?(path: string): void;
+  /** The files are stored in the cloud (the web): each file's icon carries a faint cloud. */
+  cloud?: boolean;
+  /** More items for a folder's menu, after Download (the desktop app's Open in Finder). */
+  folderActions?(path: string): LibraryAction[];
+  /**
+   * Drag a file out of the window as the file itself, to another app (the desktop app: the system runs the
+   * drag, so Finder or a video editor gets the real file). The page's own drag of the row is cancelled for it;
+   * dropped on a folder of the list, it still moves there.
+   */
+  onDragOut?(item: LibraryItem): void;
   /** Put a file in another folder. Lets a file be dragged onto a folder in the list or in the breadcrumbs. */
   onMove?(item: LibraryItem, folder: string): Promise<void>;
   /**
@@ -397,16 +407,33 @@ export function FileLibrary(props: FileLibraryProps) {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   useEffect(() => setMoveError(null), [items]);
+  // A file dragged out as the system's drag (onDragOut) ends with no dragend here: it is over once the button is
+  // up again, which the first mouse move after it shows (or a drop in the page).
+  useEffect(() => {
+    if (!props.onDragOut) return;
+    const up = (e: MouseEvent) => {
+      if (e.buttons || !dragged.current) return;
+      dragged.current = null;
+      setDropFolder(null);
+    };
+    window.addEventListener('mousemove', up);
+    return () => window.removeEventListener('mousemove', up);
+  }, [props.onDragOut]);
   /** What makes a file's row or card something to drag. */
   const dragSource = (s: LibraryItem) =>
-    props.onMove
+    props.onMove || props.onDragOut
       ? {
           draggable: true,
           onDragStart: (e: DragEvent<HTMLElement>) => {
             dragged.current = s;
+            setMenuFor(null);
+            if (props.onDragOut) {
+              e.preventDefault();
+              props.onDragOut(s);
+              return;
+            }
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', s.title);
-            setMenuFor(null);
           },
           onDragEnd: () => {
             dragged.current = null;
@@ -422,7 +449,8 @@ export function FileLibrary(props: FileLibraryProps) {
           onDragOver: (e: DragEvent<HTMLElement>) => {
             if (!takes()) return;
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
+            // The system's drag of a file dragged out (onDragOut) offers copying it, not moving.
+            e.dataTransfer.dropEffect = props.onDragOut ? 'copy' : 'move';
             if (dropFolder !== path) setDropFolder(path);
           },
           onDragLeave: (e: DragEvent<HTMLElement>) => {
@@ -441,6 +469,18 @@ export function FileLibrary(props: FileLibraryProps) {
         }
       : {};
   };
+  /** A file's icon in the list, with a faint cloud over it when the files are in the cloud. */
+  const fileIcon = (s: LibraryItem, size?: number) =>
+    props.cloud ? (
+      <span className="cloud-icon" title="Stored in the cloud">
+        {kindIcon(s, size)}
+        <svg className="cloud-badge" viewBox="0 0 24 16" aria-hidden="true">
+          <path d="M6.5 15h11a4.5 4.5 0 0 0 .7-8.95A6.5 6.5 0 0 0 5.6 5.2 5 5 0 0 0 6.5 15z" />
+        </svg>
+      </span>
+    ) : (
+      kindIcon(s, size)
+    );
   const dropClass = (path: string) => (dropFolder === path ? ' drop-target' : '');
   const [sort, setSortState] = useState<SortOrder>(loadSort);
   /** Show only one type of file (the menu next to the view buttons); folders are not listed while it is on. */
@@ -594,6 +634,11 @@ export function FileLibrary(props: FileLibraryProps) {
         <div className="dropdown">
           <button onClick={() => openFolder(f.path)}>Open</button>
           {props.onDownloadFolder && <button onClick={() => (setMenuFor(null), props.onDownloadFolder!(f.path))}>Download</button>}
+          {(props.folderActions?.(f.path) ?? []).map((a) => (
+            <button key={a.label} onClick={() => (setMenuFor(null), void a.onClick())}>
+              {a.label}
+            </button>
+          ))}
           {props.onDeleteFolder && (
             <button className="danger" onClick={() => (setMenuFor(null), setDeletingFolder(f))}>
               Delete
@@ -645,6 +690,12 @@ export function FileLibrary(props: FileLibraryProps) {
     <div
       className={`home${dragOver ? ' drag-over' : ''}`}
       onDragOver={(e) => {
+        if (dragged.current && props.onDragOut) {
+          // A file of the list dragged out (the system's drag) and back: not one to import, nor to open.
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'none';
+          return;
+        }
         if (dragged.current || !e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
         setDragOver(true);
@@ -655,7 +706,10 @@ export function FileLibrary(props: FileLibraryProps) {
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        if (dragged.current) return;
+        if (dragged.current) {
+          dragged.current = null;
+          return;
+        }
         const file = e.dataTransfer.files[0];
         if (file && !importing) props.onImport(file);
       }}
@@ -867,7 +921,7 @@ export function FileLibrary(props: FileLibraryProps) {
                 {props.thumbnail!(s)}
                 <div className="file-card-foot">
                   <div className="file-card-name" title={s.title}>
-                    {opens(s) ? titleLink(s, <>{kindIcon(s, 16)} {s.title}</>) : <span className="sheet-title">{kindIcon(s, 16)} {s.title}</span>}
+                    {opens(s) ? titleLink(s, <>{fileIcon(s, 16)} {s.title}</>) : <span className="sheet-title">{fileIcon(s, 16)} {s.title}</span>}
                   </div>
                   <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                     {itemActions(s)}
@@ -946,7 +1000,7 @@ export function FileLibrary(props: FileLibraryProps) {
                       <>
                         {depth > 0 && <span style={{ width: depth * 22 }} className="tree-indent" />}
                         {depth > 0 ? <span className="tree-elbow">└</span> : null}
-                        {kindIcon(s)} {s.title}
+                        {fileIcon(s)} {s.title}
                         {results && whereTag(s.folder ?? '')}
                         {s.branch && <span className={`branch-tag${s.branch.detached ? ' detached' : ''}`}>{s.branch.detached ? `branch of deleted “${s.branch.parentTitle}”` : depth ? 'branch' : `branch of ${s.branch.parentTitle}`}</span>}
                       </>,

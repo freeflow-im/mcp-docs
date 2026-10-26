@@ -1,11 +1,15 @@
 // The desktop app's folder button, left of the open folder's name over the file list: open one of the usual
 // folders (home, Documents, Downloads, Desktop), another folder (the app's Open Folder dialog), or a file or folder
-// by its path. The home button beside it, and the open folder's parent, the crumb before its name.
+// by its path, or show the folder being listed in Finder. The home button beside it, and the open folder's parent,
+// the crumb before its name.
 import { useEffect, useRef, useState } from 'react';
 import { api, type LocalPlace } from '../api.ts';
+import { fileBrowserName } from '../desktopBridge.ts';
 import { PromptModal } from './Modal.tsx';
 
-export function LocalFolderMenu({ onFile, onFolder }: {
+export function LocalFolderMenu({ folder, onFile, onFolder }: {
+  /** The folder of the open folder being listed ('' for the top), which Open in Finder shows. */
+  folder: string;
   /** Show a file of the open folder, by its path there. */
   onFile(rel: string): void;
   /** Show a folder of the open folder, by its path there ('' for the top). */
@@ -84,6 +88,16 @@ export function LocalFolderMenu({ onFile, onFolder }: {
             }}
           >
             Open Folder…
+          </button>
+          <div className="menu-sep" role="separator" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              void api.revealLocal({ folder }).catch(() => {});
+            }}
+          >
+            Open in {fileBrowserName()}
           </button>
         </div>
       )}

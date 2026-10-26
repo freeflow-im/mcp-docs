@@ -9,3 +9,16 @@ export const titleBase = (title: string): string => title.replace(DOC_EXT, '').t
 
 /** The name of a file of type `ext` (no dot) made from a document titled `title`. */
 export const nameWithExt = (title: string, ext: string): string => `${titleBase(title)}.${ext}`;
+
+const SCRATCH_NAME = 'Scratch pad';
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** A new scratch pad's name: "Scratch pad.md", then the day it was made ("Scratch pad-oct05.md", "Scratch pad-oct05-2.md"). */
+export function scratchPadName(taken: (name: string) => boolean, now = new Date()): string {
+  if (!taken(`${SCRATCH_NAME}.md`)) return `${SCRATCH_NAME}.md`;
+  const day = `${SCRATCH_NAME}-${MONTHS[now.getMonth()]}${String(now.getDate()).padStart(2, '0')}`;
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? `${day}.md` : `${day}-${n}.md`;
+    if (!taken(name)) return name;
+  }
+}

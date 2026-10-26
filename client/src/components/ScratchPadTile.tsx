@@ -1,20 +1,43 @@
-// The desktop app's Scratch pad tile on the home page: a menu of the scratch pads in ~/.config/mcp-docs, last
+// The Scratch pad tile on the home page: a menu of the scratch pads in ~/.config/mcp-docs, last
 // changed first, and New scratchpad, which makes one ("Scratch pad.md", then one named for the day) and opens it.
 // A scratch pad outside the open folder moves the window to that folder, as Open file by path… does, with its
 // breadcrumbs leading back to the folder shown here (listing.ts' returnTo).
+// On the web the scratch pads are the Markdown documents in the Scratch pads folder of the user's files.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { scratchPadName, titleBase } from '../../../shared/docNames.ts';
 import { api } from '../api.ts';
 
-export function ScratchPadTile({ folder, onError }: { folder: string; onError(message: string): void }) {
+/** The web's folder of scratch pads, at the top of the user's files. */
+const WEB_SCRATCH_FOLDER = 'Scratch pads';
+
+/** The web's scratch pads, last changed first (none before the folder is made). */
+async function webPads(): Promise<{ name: string; id: string }[]> {
+  const { docs } = await api.library(WEB_SCRATCH_FOLDER).catch(() => ({ docs: [] }));
+  return docs
+    .filter((d) => d.kind === 'markdown')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((d) => ({ name: d.title, id: d.id }));
+}
+
+/** A new scratch pad on the web, in its folder (made the first time): its id. */
+async function newWebPad(): Promise<string> {
+  const pads = await webPads();
+  if (!pads.length) await api.createFolder('', WEB_SCRATCH_FOLDER).catch(() => {}); // There already, but empty.
+  const titles = new Set(pads.map((p) => p.name));
+  const title = titleBase(scratchPadName((n) => titles.has(titleBase(n))));
+  return (await api.createMarkdown(title, '', WEB_SCRATCH_FOLDER)).doc.id;
+}
+
+export function ScratchPadTile({ local, folder, onError }: { local: boolean; folder: string; onError(message: string): void }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [pads, setPads] = useState<{ name: string }[] | null>(null);
+  const [pads, setPads] = useState<{ name: string; id?: string }[] | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    api.scratchPads().then(
-      (r) => setPads(r.pads),
+    (local ? api.scratchPads().then((r) => r.pads) : webPads()).then(
+      (list) => setPads(list),
       () => setPads([]),
     );
     const close = () => setOpen(false);
@@ -22,8 +45,15 @@ export function ScratchPadTile({ folder, onError }: { folder: string; onError(me
     return () => window.removeEventListener('click', close);
   }, [open]);
 
-  const openPad = (name?: string) => {
+  const openPad = (name?: string, id?: string) => {
     setOpen(false);
+    if (!local) {
+      (id ? Promise.resolve(id) : newWebPad()).then(
+        (pad) => navigate(`/md/${pad}`),
+        (e: unknown) => onError(e instanceof Error ? e.message : String(e)),
+      );
+      return;
+    }
     api.openScratchPad(name, folder).then(
       (res) => res.file !== undefined && navigate(`/open?file=${encodeURIComponent(res.file)}`),
       (e: unknown) => onError(e instanceof Error ? e.message : String(e)),
@@ -52,7 +82,7 @@ export function ScratchPadTile({ folder, onError }: { folder: string; onError(me
       {open && (
         <div className="dropdown tile-menu" role="menu">
           {pads?.map((p) => (
-            <button key={p.name} role="menuitem" onClick={() => openPad(p.name)}>
+            <button key={p.id ?? p.name} role="menuitem" onClick={() => openPad(p.name, p.id)}>
               {p.name}
             </button>
           ))}

@@ -1,9 +1,12 @@
 // The desktop app's Open Folder… and Open file by path… at the top of each editor's File menu. Both open in a
 // new tab, leaving the file being edited where it is: a folder or file inside the open folder is a new tab of this
 // folder (window.open, which the app makes a tab), one outside it a new tab on its own folder (desktop/main.js).
+// After them, Open in Finder shows the file being edited in the system's file browser.
 import { useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api.ts';
 import { useAuth } from '../auth.tsx';
+import { fileAt, fileBrowserName } from '../desktopBridge.ts';
 import type { MenuItem } from './Menu.tsx';
 import { PromptModal } from './Modal.tsx';
 
@@ -11,11 +14,13 @@ import { PromptModal } from './Modal.tsx';
 export function useOpenInTab(): { items: MenuItem[]; dialog: ReactNode } {
   const local = !!useAuth().local;
   const [asking, setAsking] = useState(false);
+  const shown = fileAt(useLocation().pathname);
   if (!local) return { items: [], dialog: null };
   return {
     items: [
       { label: 'Open Folder…', action: () => void api.chooseLocalFolder(true) },
       { label: 'Open file by path…', action: () => setAsking(true) },
+      ...(shown ? [{ label: `Open in ${fileBrowserName()}`, action: () => void api.revealLocal(shown).catch(() => {}) }] : []),
       'sep',
     ],
     dialog: asking && (

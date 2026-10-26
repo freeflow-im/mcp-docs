@@ -647,6 +647,37 @@ describe('recents: the files last opened on the machine', () => {
     }
   });
 
+  it('shows a file or folder in the file browser and drags a file out, only of the folder', async () => {
+    const data = mkdtempSync(path.join(tmpdir(), 'sheetsweb-localdata-'));
+    mkdirSync(at('shown'), { recursive: true });
+    writeFileSync(at('shown', 'clip.mp4'), 'video');
+    writeFileSync(at('shown', 'notes.md'), '# Notes\n');
+    const revealed: string[] = [];
+    const dragged: string[] = [];
+    const app = await buildApp({ dataDir: data, local: { dir: folder, recents: null, reveal: (t) => revealed.push(t), startDrag: (f) => dragged.push(f) } });
+    const post = async (url: string, payload: object) => (await app.inject({ method: 'POST', url, payload })).statusCode;
+    try {
+      const resolve = async (rel: string) => (await app.inject({ method: 'GET', url: `/api/local/resolve?file=${encodeURIComponent(rel)}` })).json() as { kind: string; id: string };
+      const clip = await resolve('shown/clip.mp4');
+      const notes = await resolve('shown/notes.md');
+      expect(await post('/api/local/reveal', clip)).toBe(200);
+      expect(await post('/api/local/reveal', { folder: 'shown' })).toBe(200);
+      expect(await post('/api/local/reveal', {})).toBe(200);
+      expect(revealed).toEqual([at('shown', 'clip.mp4'), at('shown'), folder]);
+      expect(await post('/api/local/drag', notes)).toBe(200);
+      expect(dragged).toEqual([at('shown', 'notes.md')]);
+      // Only a file, of this folder.
+      expect(await post('/api/local/drag', { folder: 'shown' })).toBe(400);
+      expect(await post('/api/local/drag', { kind: 'file', id: 'nope' })).toBe(404);
+      expect(await post('/api/local/reveal', { kind: 'other', id: clip.id })).toBe(404);
+      expect(await post('/api/local/reveal', { folder: '../..' })).not.toBe(200);
+      expect(revealed).toHaveLength(3);
+    } finally {
+      await app.close();
+      rmSync(data, { recursive: true, force: true });
+    }
+  });
+
   it('names a new scratch pad for the day it was made', () => {
     const taken = new Set<string>();
     const day = new Date(2026, 8, 5);

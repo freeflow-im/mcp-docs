@@ -48,3 +48,9 @@ export function useDesktopBridge(on: boolean): void {
     return () => window.removeEventListener('universal-show', show);
   }, [on, navigate]);
 }
+
+/** The system's file browser, as the desktop app's "Open in …" items name it. */
+export function fileBrowserName(): string {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  return /Windows/.test(ua) ? 'File Explorer' : /Macintosh|Mac OS X/.test(ua) ? 'Finder' : 'Files';
+}

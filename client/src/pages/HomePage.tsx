@@ -11,6 +11,7 @@ import { FileThumb } from '../components/FileThumb.tsx';
 import { HomeIcon } from '../components/Logo.tsx';
 import { Modal, PromptModal } from '../components/Modal.tsx';
 import { MoveModal } from '../components/MoveModal.tsx';
+import { fileBrowserName } from '../desktopBridge.ts';
 import { useFavicon } from '../favicon.ts';
 import { RECENTS_PARAM, rememberListing, rememberReturn, returnTo, useListingScroll } from '../listing.ts';
 import { LocalFolderHome, LocalFolderMenu, LocalFolderParent, parentDir } from '../components/LocalFolderMenu.tsx';
@@ -349,7 +350,7 @@ function FileList() {
       listIcon={
         local ? (
           <>
-            <LocalFolderMenu onFile={(rel) => navigate(`/open?file=${encodeURIComponent(rel)}`)} onFolder={openFolder} />
+            <LocalFolderMenu folder={folder} onFile={(rel) => navigate(`/open?file=${encodeURIComponent(rel)}`)} onFolder={openFolder} />
             <LocalFolderHome onFolder={openFolder} />
             {/* At the folder's top the folder above it on disk is the parent crumb; below, the trail has one. */}
             {!folder && <LocalFolderParent dir={local.dir} />}
@@ -434,11 +435,15 @@ function FileList() {
         await api.deleteFolder(path);
         await load();
       }}
+      cloud={!local}
       onDownloadFolder={(path) => window.location.assign(`/api/folders/download?folder=${encodeURIComponent(path)}`)}
       onMove={recents ? undefined : async (s, to) => {
         await api.moveToFolder(s.kind, s.id, to);
         await load();
       }}
+      // The desktop app: a file dragged out of the list is the file itself to other apps (Finder, a video editor).
+      onDragOut={local && !recents ? (s) => void api.dragOutLocal(s.kind, s.id).catch((e: Error) => setError(e.message)) : undefined}
+      folderActions={local ? (path) => [{ label: `Open in ${fileBrowserName()}`, onClick: () => void api.revealLocal({ folder: path }).catch((e: Error) => setError(e.message)) }] : undefined}
       headerActions={
         <>
           <div className="home-more" ref={moreRef}>
@@ -503,10 +508,11 @@ function FileList() {
       importAccept=""
       importLabel="Import file"
       tiles={
-        local ? (
+        local || user ? (
           <>
             <div>
-              <button className="new-sheet-tile help-tile agent-tile" onClick={() => void api.connectAgent()}>
+              {/* The desktop app shows its Connect an Agent dialog; on the web, Settings has the MCP address. */}
+              <button className="new-sheet-tile help-tile agent-tile" onClick={() => (local ? void api.connectAgent() : navigate('/settings#agents'))}>
                 <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0zM12 16v5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -517,7 +523,7 @@ function FileList() {
               </button>
             </div>
             <div>
-              <ScratchPadTile folder={folder} onError={setError} />
+              <ScratchPadTile local={!!local} folder={folder} onError={setError} />
             </div>
           </>
         ) : undefined
@@ -545,6 +551,7 @@ function FileList() {
           ? [{ label: 'Convert to Markdown', onClick: () => api.pdfToMarkdown(s.id).then(({ doc, warnings }) => navigate(`/md/${doc.id}`, { state: { importWarnings: warnings } }), (e: Error) => setError(e.message)) }]
           : []),
         { label: 'Move to…', onClick: () => setMoving(s) },
+        ...(local ? [{ label: `Open in ${fileBrowserName()}`, onClick: () => void api.revealLocal({ kind: s.kind, id: s.id }).catch((e: Error) => setError(e.message)) }] : []),
         // Copies between the folder and the web (desktop app): from a folder here, from the web to a folder.
         ...(local
           ? [{ label: 'Upload to Web…', onClick: () => setUploading(s) }]

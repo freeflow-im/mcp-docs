@@ -138,7 +138,7 @@ describe('plugin mounted in the app', () => {
     const { cookie } = await signUp(app, box, 'agents@x.com', 'password-12345');
     const formBody = (b: Record<string, string>) => ({ headers: { 'content-type': 'application/x-www-form-urlencoded' }, payload: new URLSearchParams(b).toString() });
     const list = async (c = cookie) => (await app.inject({ method: 'GET', url: '/api/settings/agents', headers: { cookie: c } })).json();
-    expect(await list()).toEqual({ enabled: true, agents: [] });
+    expect(await list()).toEqual({ enabled: true, agents: [], mcpUrl: 'https://docs.test/mcp/v2' });
 
     const reg = await app.inject({ method: 'POST', url: '/oauth/register', headers: { 'content-type': 'application/json' }, payload: { client_name: 'mcp-remote', grant_types: ['urn:ietf:params:oauth:grant-type:device_code', 'refresh_token'] } });
     const clientId = reg.json().client_id as string;
