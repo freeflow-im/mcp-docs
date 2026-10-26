@@ -12,6 +12,7 @@ import { DocPage } from './pages/DocPage.tsx';
 import { FilePage } from './pages/FilePage.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordResetPages.tsx';
 import { HomePage } from './pages/HomePage.tsx';
+import { LandingPage } from './pages/LandingPage.tsx';
 import { OpenLocalFile } from './pages/OpenLocalFile.tsx';
 import { MarkdownPage } from './pages/MarkdownPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
@@ -31,6 +32,13 @@ function RequireAuth({ children }: { children: ReactElement }) {
   if (loading) return <div className="page-loading">Loading…</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
+}
+
+/** The home page: the files of a user who is signed in, the front page (what the app is) for a visitor. */
+function Home() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="page-loading">Loading…</div>;
+  return user ? <HomePage /> : <LandingPage />;
 }
 
 function GuestOnly({ children }: { children: ReactElement }) {
@@ -56,7 +64,7 @@ function AppShell() {
           <Route path="/forgot" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
           <Route path="/reset" element={<GuestOnly><ResetPasswordPage /></GuestOnly>} />
           <Route path="/verify" element={<GuestOnly><VerifyEmailPage /></GuestOnly>} />
-          <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+          <Route path="/" element={<Home />} />
           <Route path="/s/:id" element={<RequireAuth><SpreadsheetPage /></RequireAuth>} />
           <Route path="/d/:id" element={<RequireAuth><DeckPage /></RequireAuth>} />
           <Route path="/doc/:id" element={<RequireAuth><DocPage /></RequireAuth>} />

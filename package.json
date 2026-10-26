@@ -127,6 +127,7 @@
       "dist/client/**",
       "!**/*.test.ts",
       "!**/*.test.tsx",
+      "!dist/client/marketing/**",
       "!server/fixtures/**",
       "!server/scripts/**",
       "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",

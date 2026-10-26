@@ -63,10 +63,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     return (
       <div className="auth-page">
         <div className="auth-card">
-          <div className="auth-brand">
+          <Link to="/" className="auth-brand">
             <HomeIcon size={36} />
             <span>MCP Docs</span>
-          </div>
+          </Link>
           <h1>Check your email</h1>
           <p className="auth-text">
             We sent a link to <strong>{pendingEmail}</strong>. Open it to verify your address and sign in. It expires in 24 hours.
@@ -96,8 +96,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         }}
       >
         <div className="auth-brand">
-          <HomeIcon size={36} />
-          <span>MCP Docs</span>
+          {/* Back to the front page. */}
+          <Link to="/" className="auth-brand-home">
+            <HomeIcon size={36} />
+            <span>MCP Docs</span>
+          </Link>
           <PlaceSwitch />
         </div>
         <h1>{isLogin ? 'Sign in' : 'Create your account'}</h1>
@@ -160,12 +163,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           )}
         </div>
       </form>
-      {isLogin && (
-        <figure className="auth-diagram">
-          <img src="/architecture.png" alt="How MCP Docs works: the browser talks to a live agent on the server; the live agent files app change jobs with a coding agent that edits the app's source, restarts it and publishes a merged pull request." width="820" height="470" />
-          <figcaption>MCP Docs improves itself: ask the assistant for something it can't do, and a coding agent adds it to the app.</figcaption>
-        </figure>
-      )}
     </div>
   );
 }
