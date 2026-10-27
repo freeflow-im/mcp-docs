@@ -38,6 +38,8 @@ import { DOC_TRAY } from '../panelSize.ts';
 import { PageSetupDialog } from '../doc/PageSetupDialog.tsx';
 import { DocStyleDialog } from '../doc/DocStyleDialog.tsx';
 import { DocToolbar } from '../doc/DocToolbar.tsx';
+import { SignatureDialog } from '../pdf/SignatureDialog.tsx';
+import { SignMenu, signatureFile, today, useSignatures, type Signature } from '../components/SignMenu.tsx';
 import { VideoDialog } from '../components/VideoDialog.tsx';
 import { checkDocxFile, pickDocxFile } from '../importFile.ts';
 import { useDocFonts } from '../doc/fonts.ts';
@@ -143,6 +145,9 @@ type Dialog = { kind: 'rename' } | { kind: 'delete' } | { kind: 'link'; initial:
 const LINE_SPACINGS: [string, number | null][] = [['Default', null], ['Single', 1.15], ['1.5', 1.5], ['Double', 2]];
 
 const ZOOMS = [50, 75, 100, 125, 150, 200] as const;
+/** A signature is put in the line this tall (in CSS pixels, about two lines of text), and no wider than this. */
+const SIGNATURE_HEIGHT = 44;
+const SIGNATURE_MAX_WIDTH = 240;
 const THUMBS_KEY = 'ui.docThumbs';
 
 function loadShowThumbs(): boolean {
@@ -296,6 +301,23 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
     [ctl, notify],
   );
 
+  // Signing: a signature goes in the line at the cursor (on a form's blank, which it replaces when selected), stored
+  // as a picture of the document, about as tall as two lines of text.
+  const sigs = useSignatures();
+  const [signing, setSigning] = useState(false);
+  const signWith = async (sig: Signature) => {
+    try {
+      const url = await uploadImageFile(await signatureFile(sig));
+      const width = Math.round(Math.min(SIGNATURE_MAX_WIDTH, (SIGNATURE_HEIGHT * sig.width) / Math.max(1, sig.height)));
+      if (!ctl.insertInlineImage(url, { alt: 'Signature', width })) notify('Put the cursor in a line of text to sign there.');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const insertDate = () => {
+    if (!ctl.insertText(today())) notify("Put the cursor in a line of text to put today's date there.");
+  };
+
   const [insertingVideo, setInsertingVideo] = useState(false);
   const insertImage = async () => {
     const file = await pickImageFile();
@@ -434,6 +456,8 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
       items: () => [
         { label: 'Image…', action: () => void insertImage() },
         { label: 'Video…', action: () => setInsertingVideo(true) },
+        { label: 'Signature…', disabled: office.locked, action: () => setSigning(true) },
+        { label: "Today's date", disabled: office.locked, action: insertDate },
         { label: 'Link…', shortcut: `${MOD}K`, action: openLinkDialog },
         { label: 'Horizontal rule', action: () => ctl.insertHorizontalRule() },
         { label: 'Page break', shortcut: `${MOD}⏎`, action: () => ctl.insertPageBreak() },
@@ -543,7 +567,14 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
           <Account before={() => ctl.saver.flush()} />
         </div>
       </header>
-      <DocToolbar ctl={ctl} onLink={openLinkDialog} onInsertImage={() => void insertImage()} onInsertVideo={() => setInsertingVideo(true)} onEditImage={editImage} />
+      <DocToolbar
+        ctl={ctl}
+        onLink={openLinkDialog}
+        onInsertImage={() => void insertImage()}
+        onInsertVideo={() => setInsertingVideo(true)}
+        onEditImage={editImage}
+        sign={<SignMenu sigs={sigs} disabled={office.locked} title="Sign at the cursor with one of your signatures, or put today's date there" onPick={(sig) => void signWith(sig)} onDate={insertDate} onError={notify} />}
+      />
       {importWarnings.length > 0 && (
         <div className="import-banner" role="status">
           <div>
@@ -616,6 +647,7 @@ function DocWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta:
 
       {dialog?.kind === 'pageSetup' && <PageSetupDialog ctl={ctl} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'docStyle' && <DocStyleDialog ctl={ctl} onClose={() => setDialog(null)} />}
+      {signing && <SignatureDialog onUse={async (image, remember) => (setSigning(false), void signWith(await sigs.add(image, remember)))} onClose={() => setSigning(false)} />}
       {insertingVideo && <VideoDialog folder={meta.folder} onInsert={(src, title) => ctl.insertVideo(src, { title: title.replace(/\.[^.]+$/, '') })} onClose={() => setInsertingVideo(false)} />}
       {editingImage && <ImageEditDialog backgroundRemovalLoader={loadBackgroundRemoval} src={editingImage.src} name="picture" onSave={(image, sizes) => saveEditedImage(editingImage, image, sizes)} onClose={() => setEditingImage(null)} />}
       {dialog?.kind === 'rename' && <PromptModal title="Rename document" label="Name" initial={meta.title} confirmText="Rename" onConfirm={rename} onClose={() => setDialog(null)} />}

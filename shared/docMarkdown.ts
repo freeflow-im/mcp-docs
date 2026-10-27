@@ -207,6 +207,8 @@ function canClose(s: string, i: number, len: number, underscore: boolean): boole
 }
 
 const TAG_RE = /^<(\/?)(u|s|b|strong|i|em|mark|del|span|br)\b([^>]*)>/i;
+/** A picture in the line, as `inlineToMarkdown` writes it: `<img src="…" alt="…" width="…">`. */
+const IMG_TAG_RE = /^<img\b([^>]*?)\/?>/i;
 
 class InlineParser {
   private schema: Schema;
@@ -312,6 +314,15 @@ class InlineParser {
           continue;
         }
       }
+      if (ch === '!' && s[i + 1] === '[' && this.schema.nodes.inline_image) {
+        const pic = /^!\[([^\]]*)\]\(\s*(\S+?)(?:\s+"[^"]*")?\s*\)/.exec(s.slice(i));
+        if (pic && !checkCellImage(pic[2]) && !videoAddress(pic[2])) {
+          this.flush();
+          this.out.push(this.schema.nodes.inline_image.create({ src: pic[2], alt: pic[1] }));
+          i += pic[0].length;
+          continue;
+        }
+      }
       if (ch === '[') {
         const close = s.indexOf('](', i + 1);
         if (close > 0) {
@@ -334,6 +345,18 @@ class InlineParser {
           this.out.push(this.schema.text(auto[1], this.schema.marks.link.create({ href: auto[1] }).addToSet(this.marks)));
           i += auto[0].length;
           continue;
+        }
+        const img = IMG_TAG_RE.exec(s.slice(i));
+        if (img && this.schema.nodes.inline_image) {
+          const attr = (name: string) => new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i').exec(img[1])?.[1];
+          const src = attr('src') ?? '';
+          const width = Number.parseInt(attr('width') ?? '', 10);
+          if (!checkCellImage(src)) {
+            this.flush();
+            this.out.push(this.schema.nodes.inline_image.create({ src, alt: attr('alt') ?? '', width: width > 0 && width <= 10000 ? width : null }));
+            i += img[0].length;
+            continue;
+          }
         }
         const tag = TAG_RE.exec(s.slice(i));
         if (tag) {
@@ -443,6 +466,14 @@ export function inlineToMarkdown(node: PMNode): string {
   let lineStart = true;
   for (let k = 0; k < children.length; k++) {
     const n = children[k];
+    if (n.type.name === 'inline_image') {
+      for (const m of [...active].reverse()) out += markDelims(m)[1];
+      active = [];
+      const alt = String(n.attrs.alt ?? '').replace(/["<>]/g, '');
+      out += `<img src="${String(n.attrs.src).replace(/"/g, '%22')}" alt="${alt}"${n.attrs.width ? ` width="${Number(n.attrs.width)}"` : ''}>`;
+      lineStart = false;
+      continue;
+    }
     if (!n.isText) {
       // Line break: close everything, reopen after.
       for (const m of [...active].reverse()) out += markDelims(m)[1];

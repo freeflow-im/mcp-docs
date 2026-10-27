@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Node as PMNode } from 'prosemirror-model';
 import { DOC_PAGE_WIDTH, editedImageWidth } from '../../../shared/doc.ts';
 import { markdownToDoc } from '../../../shared/docMarkdown.ts';
+import { NodeSelection, TextSelection } from 'prosemirror-state';
 import { DocController } from './controller.ts';
 
 const size = (width: number, height: number) => ({ width, height });
@@ -55,5 +56,26 @@ describe('a picture in a document after it was edited', () => {
     // Gone, or a position that is no longer in the document: nothing to put the edit in.
     expect(ctl.replaceImage(was, OLD, NEW, null, null)).toBe(false);
     expect(ctl.replaceImage(99999, 'https://example.com/none.png', NEW, null, null)).toBe(false);
+  });
+});
+
+describe('signing a document', () => {
+  it("puts the signature in the line in place of the selected blank, and today's date as text, each undone in one step", () => {
+    const ctl = new DocController(markdownToDoc('Signed \\_\\_\\_\\_ Name\n\nDate'), async () => {});
+    expect(ctl.state.doc.firstChild!.textContent).toBe('Signed ____ Name');
+    const start = 1 + 'Signed '.length;
+    ctl.run((tr) => tr.setSelection(TextSelection.create(tr.doc, start, start + 4)));
+    expect(ctl.insertInlineImage(NEW, { alt: 'Signature', width: 88 })).toBe(true);
+    expect(ctl.state.doc.firstChild!.toJSON().content).toEqual([{ type: 'text', text: 'Signed ' }, { type: 'inline_image', attrs: { src: NEW, alt: 'Signature', width: 88 } }, { type: 'text', text: ' Name' }]);
+    ctl.run((tr) => tr.setSelection(TextSelection.atEnd(tr.doc)));
+    expect(ctl.insertText(' Oct 27, 2026')).toBe(true);
+    expect(ctl.state.doc.lastChild!.textContent).toBe('Date Oct 27, 2026');
+    ctl.undo();
+    ctl.undo();
+    expect(ctl.state.doc.firstChild!.textContent).toBe('Signed ____ Name');
+    // Not in a line of text (a picture block selected): nothing is put in.
+    const pic = new DocController(markdownToDoc(`![A chart](${OLD})`), async () => {});
+    pic.run((tr) => tr.setSelection(NodeSelection.create(tr.doc, 0)));
+    expect(pic.insertInlineImage(NEW)).toBe(false);
   });
 });

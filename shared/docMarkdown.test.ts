@@ -111,6 +111,23 @@ describe('document markdown', () => {
     expect(validateDoc(bad)).toMatch(/Invalid video/);
   });
 
+  it('reads and writes a picture in a line of text, kept apart from a picture on a line of its own', () => {
+    const src = '/api/images/00000000-0000-0000-0000-000000000001';
+    const md = `Signed <img src="${src}" alt="Signature" width="88"> Name\n\n![Logo](${src})\n\nA mark ![tick](${src}) here.`;
+    const d = markdownToDoc(md);
+    expect(validateDoc(d)).toBeNull();
+    const [signed, logo, tick] = d.content.content!;
+    expect(signed.content).toEqual([{ type: 'text', text: 'Signed ' }, { type: 'inline_image', attrs: { src, alt: 'Signature', width: 88 } }, { type: 'text', text: ' Name' }]);
+    expect(logo.type).toBe('image');
+    expect(tick.content?.[1]).toEqual({ type: 'inline_image', attrs: { src, alt: 'tick', width: null } });
+    expect(roundTrip(md)).toBe(`Signed <img src="${src}" alt="Signature" width="88"> Name\n\n![Logo](${src})\n\nA mark <img src="${src}" alt="tick"> here.`);
+    // A line holding only an inline picture stays one (not a block picture).
+    expect(docNode(markdownToDoc(`<img src="${src}" alt="">`)).firstChild!.type.name).toBe('paragraph');
+    expect(docText(docNode(markdownToDoc(md)))).toContain('Signed [image: Signature] Name');
+    // Not a picture address: left as text.
+    expect(roundTrip('<img src="javascript:alert(1)">')).toBe('\\<img src="javascript:alert(1)">');
+  });
+
   it('ignores unsafe links and images, and accepts an empty document', () => {
     const n = markdownToNodes('[x](javascript:alert(1)) and ![y](javascript:alert(1))');
     expect(n[0].textContent).toBe('[x](javascript:alert(1)) and ![y](javascript:alert(1))');

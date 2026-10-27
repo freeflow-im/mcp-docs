@@ -545,6 +545,26 @@ export class DocController {
     return ok;
   }
 
+  /** Put a picture in the line at the cursor, in place of what is selected (a form's blank line, say). */
+  insertInlineImage(src: string, attrs: { alt?: string; width?: number | null } = {}): boolean {
+    const ok = this.run((tr) => {
+      if (!this.state.selection.$from.parent.inlineContent) return;
+      tr.replaceSelectionWith(n.inline_image.create({ src, alt: attrs.alt ?? '', width: attrs.width ?? null }), false).scrollIntoView();
+    });
+    this.focus();
+    return ok;
+  }
+
+  /** Type text at the cursor, in place of what is selected. */
+  insertText(text: string): boolean {
+    const ok = this.run((tr) => {
+      if (!this.state.selection.$from.parent.inlineContent) return;
+      tr.insertText(text).scrollIntoView();
+    });
+    this.focus();
+    return ok;
+  }
+
   /** Add a video block (shared/video.ts) at the cursor, like an image. */
   insertVideo(src: string, attrs: { title?: string; width?: number | null; align?: Alignment | null } = {}): boolean {
     const node = n.video.create({ src, title: attrs.title ?? '', width: attrs.width ?? null, align: attrs.align ?? null });

@@ -433,7 +433,9 @@ class Importer {
               else inline.push(n.hard_break.create());
             } else if (t === 'w:drawing' || t === 'w:pict') {
               const img = await this.picture(part, rels);
-              if (img) images.push(img);
+              // A picture in the line (not floating) stays there, unless it turns out to be the paragraph's only content.
+              if (img && t === 'w:drawing' && child(part, 'wp:inline')) inline.push(n.inline_image.create({ src: img.attrs.src, alt: img.attrs.alt, width: img.attrs.width }));
+              else if (img) images.push(img);
             } else if (t === 'w:sym') {
               const ch = attrs(part)['w:char'];
               const code = ch ? Number.parseInt(ch, 16) : NaN;
@@ -455,6 +457,11 @@ class Importer {
       }
     };
     await walk(p);
+    // A paragraph of nothing but pictures is pictures, each a block of its own as before.
+    if (!inline.some((x) => x.isText && x.text!.trim()) && inline.some((x) => x.type === n.inline_image)) {
+      const blocks = inline.filter((x) => x.type === n.inline_image).map((x) => n.image.create({ src: x.attrs.src, alt: x.attrs.alt, width: x.attrs.width, align: null }));
+      return { inline: inline.filter((x) => x.type !== n.inline_image), images: [...blocks, ...images] };
+    }
     return { inline, images };
   }
 

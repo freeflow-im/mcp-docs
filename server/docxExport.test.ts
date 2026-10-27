@@ -121,6 +121,21 @@ describe('docx export', () => {
     expect(zip.file(/^word\/media\/./)).toHaveLength(2);
   });
 
+  it('keeps a picture in its line of text (a signature on a form), and the same picture as a block too', async () => {
+    const sig = { type: 'inline_image', attrs: { src: IMG(1), alt: 'Signature', width: 88 } };
+    const d = doc([p(t('Signed '), sig, t(' Name')), b('image', [], { src: IMG(1), alt: '', width: 120, align: null }), p(t('Date '), t('Oct 27, 2026', { type: 'bold' }))]);
+    const { after, warnings } = await roundTrip(d);
+    expect(content(after)).toEqual([
+      { type: 'paragraph', attrs: { align: null, spacing: null }, content: [{ type: 'text', text: 'Signed ' }, sig, { type: 'text', text: ' Name' }] },
+      { type: 'image', attrs: { src: IMG(1), alt: '', width: 120, align: null } },
+      { type: 'paragraph', attrs: { align: null, spacing: null }, content: [{ type: 'text', text: 'Date ' }, { type: 'text', text: 'Oct 27, 2026', marks: [{ type: 'bold' }] }] },
+    ]);
+    expect(warnings).toEqual([]);
+    const xml = await (await JSZip.loadAsync(await docDocx(d, 'Test', load))).file('word/document.xml')!.async('string');
+    // In the paragraph's own runs, between its text.
+    expect(xml).toMatch(/Signed <\/w:t><\/w:r><w:r><w:drawing><wp:inline [^]*?<\/w:drawing><\/w:r><w:r><w:t xml:space="preserve"> Name/);
+  });
+
   it('round-trips the page setup, header, footer, page numbers and the document style', async () => {
     const style = { font: 'Georgia', size: 11, lineHeight: 1.4, spaceAfter: 6 };
     for (const page of [

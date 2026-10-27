@@ -6,8 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Pointer
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import { signPdf, TEXT_BASELINE, TEXT_FONT_CSS, TEXT_LINE_HEIGHT, type PdfMark } from '../../../shared/pdfSign.ts';
 import { ConfirmModal } from '../components/Modal.tsx';
-import { api } from '../api.ts';
-import { SignatureDialog } from './SignatureDialog.tsx';
+import { SignMenu, today, useSignatures, type Signature } from '../components/SignMenu.tsx';
 
 export interface SignedPdfStore {
   /** The PDF's bytes as they are. */
@@ -20,16 +19,6 @@ export interface SignedPdfStore {
 
 type Mark = PdfMark & { id: string };
 type Tool = 'signature' | 'text' | 'date';
-
-/** A signature to sign with: one the user saved, or one made for this PDF only (`saved` false). */
-interface Signature {
-  id: string;
-  image: string;
-  /** The picture's size in pixels, for its shape. */
-  width: number;
-  height: number;
-  saved: boolean;
-}
 
 /** Size of a page as it is shown, in points. */
 interface PageSize {
@@ -53,25 +42,10 @@ export function signedCopyName(filename: string): string {
   return `${base}-signed.pdf`;
 }
 
-/** Today, as a date is written on a form: Oct 19, 2026. */
-export function today(): string {
-  return new Date().toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
 async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
   if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   return pdfjs;
-}
-
-/** The size of a picture in pixels. */
-function pictureSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => reject(new Error('The signature picture could not be read.'));
-    img.src = src;
-  });
 }
 
 export function PdfSigner({ file, store, onClose }: { file: { id: string; filename: string }; store: SignedPdfStore; onClose(): void }) {
@@ -83,12 +57,9 @@ export function PdfSigner({ file, store, onClose }: { file: { id: string; filena
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool | null>(null);
-  const [signatures, setSignatures] = useState<Signature[]>([]);
+  const sigs = useSignatures();
   /** The signature the Sign tool puts on the page. */
   const [signature, setSignature] = useState<Signature | null>(null);
-  const [signMenu, setSignMenu] = useState(false);
-  const [signatureDialog, setSignatureDialog] = useState(false);
-  const signMenuRef = useRef<HTMLSpanElement>(null);
   const [busy, setBusy] = useState<'save' | 'copy' | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [width, setWidth] = useState(0);
@@ -122,34 +93,6 @@ export function PdfSigner({ file, store, onClose }: { file: { id: string; filena
       void task?.destroy();
     };
   }, [file.id]);
-
-  // The saved signatures.
-  useEffect(() => {
-    let stale = false;
-    api.listSignatures().then(
-      async ({ signatures: saved }) => {
-        const sized = await Promise.all(saved.map(async (s) => ({ id: s.id, image: s.image, saved: true, ...(await pictureSize(s.image)) })));
-        if (!stale) setSignatures((current) => [...sized, ...current.filter((c) => !c.saved)]);
-      },
-      () => {},
-    );
-    return () => {
-      stale = true;
-    };
-  }, []);
-
-  // The Sign menu closes on a click elsewhere or Escape.
-  useEffect(() => {
-    if (!signMenu) return;
-    const onDown = (e: MouseEvent) => !signMenuRef.current?.contains(e.target as Node) && setSignMenu(false);
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSignMenu(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [signMenu]);
 
   // Pages fit the width of the view, up to a little larger than life.
   useLayoutEffect(() => {
@@ -227,33 +170,11 @@ export function PdfSigner({ file, store, onClose }: { file: { id: string; filena
   /** Sign with this signature: the next click on a page puts it there. */
   const signWith = (sig: Signature) => {
     setEditing(null);
-    setSignMenu(false);
     setSignature(sig);
     setTool('signature');
   };
 
-  const openSignMenu = () => {
-    if (!signatures.length) return setSignatureDialog(true);
-    setSignMenu((o) => !o);
-  };
-
-  const addSignature = async (image: string, remember: boolean) => {
-    const size = await pictureSize(image);
-    const sig: Signature = remember ? { ...(await api.addSignature(image)).signature, saved: true, ...size } : { id: newId(), image, saved: false, ...size };
-    setSignatures((ss) => [...ss, sig]);
-    setSignatureDialog(false);
-    signWith(sig);
-  };
-
-  const forgetSignature = async (sig: Signature) => {
-    if (sig.saved) {
-      try {
-        await api.deleteSignature(sig.id);
-      } catch (e) {
-        return setError(e instanceof Error ? e.message : String(e));
-      }
-    }
-    setSignatures((ss) => ss.filter((s) => s.id !== sig.id));
+  const forgotSignature = (sig: Signature) => {
     if (signature?.id === sig.id) {
       setSignature(null);
       if (tool === 'signature') setTool(null);
@@ -284,38 +205,7 @@ export function PdfSigner({ file, store, onClose }: { file: { id: string; filena
   return (
     <div className="pdf-signer">
       <div className="html-editor-bar pdf-signer-bar">
-        <span className="pdf-sign-menu" ref={signMenuRef}>
-          <button className={`btn${tool === 'signature' || signMenu ? ' active' : ''}`} disabled={!doc} onClick={openSignMenu} aria-haspopup="menu" aria-expanded={signMenu} title="Put one of your signatures on the page">
-            Sign
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          {signMenu && (
-            <div className="pdf-sign-menu-list" role="menu">
-              {signatures.map((sig) => (
-                <div key={sig.id} className={`pdf-sign-menu-item${signature?.id === sig.id ? ' current' : ''}`}>
-                  <button role="menuitem" className="pdf-sign-menu-pick" onClick={() => signWith(sig)} title={sig.saved ? 'Sign with this signature' : 'Sign with this signature (not saved, only for this PDF)'}>
-                    <img src={sig.image} alt="A saved signature" />
-                  </button>
-                  <button className="pdf-sign-menu-remove" onClick={() => void forgetSignature(sig)} title={sig.saved ? 'Remove this saved signature' : 'Remove this signature'} aria-label="Remove this signature">
-                    ×
-                  </button>
-                </div>
-              ))}
-              <button
-                role="menuitem"
-                className="pdf-sign-menu-add"
-                onClick={() => {
-                  setSignMenu(false);
-                  setSignatureDialog(true);
-                }}
-              >
-                Add a signature…
-              </button>
-            </div>
-          )}
-        </span>
+        <SignMenu sigs={sigs} current={signature?.id} active={tool === 'signature'} disabled={!doc} title="Put one of your signatures on the page" onPick={signWith} onForgot={forgotSignature} onError={setError} />
         <button className={`btn${tool === 'text' ? ' active' : ''}`} disabled={!doc} onClick={() => pickTool('text')} title="Write a line of text on the page">
           Text
         </button>
@@ -362,7 +252,6 @@ export function PdfSigner({ file, store, onClose }: { file: { id: string; filena
             </PdfPage>
           ))}
       </div>
-      {signatureDialog && <SignatureDialog onUse={addSignature} onClose={() => setSignatureDialog(false)} />}
       {confirmClose && <ConfirmModal title="Close without saving?" message="What you put on this PDF has not been saved." confirmText="Discard changes" danger onConfirm={onClose} onClose={() => setConfirmClose(false)} />}
     </div>
   );

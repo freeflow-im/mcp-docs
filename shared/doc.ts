@@ -344,6 +344,27 @@ const nodes: Record<string, NodeSpec> = {
       ['img', { src: node.attrs.src, alt: node.attrs.alt || null, ...(node.attrs.width ? { style: `width: ${node.attrs.width}px` } : {}) }],
     ],
   },
+  // A picture in a line of text: a signature on a form's line, an icon. Its width is in CSS pixels; with none it
+  // is as tall as a few lines at most.
+  inline_image: {
+    inline: true,
+    group: 'inline',
+    draggable: true,
+    selectable: true,
+    attrs: { src: {}, alt: { default: '' }, width: { default: null } },
+    parseDOM: [
+      {
+        tag: 'img.doc-inline-image[src]',
+        priority: 60,
+        getAttrs: (dom) => {
+          if (typeof dom === 'string') return false;
+          const w = Number.parseInt(dom.getAttribute('width') ?? dom.style?.width ?? '', 10);
+          return { src: dom.getAttribute('src') ?? '', alt: dom.getAttribute('alt') ?? '', width: Number.isFinite(w) && w > 0 ? w : null };
+        },
+      },
+    ],
+    toDOM: (node) => ['img', { class: 'doc-inline-image', src: node.attrs.src, alt: node.attrs.alt || null, ...(node.attrs.width ? { style: `width: ${node.attrs.width}px` } : {}) }],
+  },
   // A video that plays in the page (shared/video.ts). Outside the editor, which has its own view of it
   // (client/src/doc/DocEditor.tsx), it is its still: YouTube's picture, or the stored file's player.
   video: {
@@ -499,7 +520,7 @@ export function validateDoc(d: unknown): string | null {
   let problem: string | null = null;
   node.descendants((n) => {
     if (problem) return false;
-    if (n.type.name === 'image') {
+    if (n.type.name === 'image' || n.type.name === 'inline_image') {
       const p = checkCellImage(n.attrs.src);
       if (p) problem = `Invalid image: ${p}`;
       if (n.attrs.width !== null && (typeof n.attrs.width !== 'number' || n.attrs.width < 1 || n.attrs.width > 10000)) problem = 'Invalid image width';
@@ -527,7 +548,7 @@ export function validateDoc(d: unknown): string | null {
 
 /** The plain text of a document, one line per block, for searching and previews. */
 export function docText(node: PMNode): string {
-  return node.textBetween(0, node.content.size, '\n', (leaf) => (leaf.type.name === 'image' ? `[image${leaf.attrs.alt ? `: ${leaf.attrs.alt}` : ''}]` : leaf.type.name === 'video' ? `[video${leaf.attrs.title ? `: ${leaf.attrs.title}` : ''}]` : leaf.type.name === 'hard_break' ? '\n' : ''));
+  return node.textBetween(0, node.content.size, '\n', (leaf) => (leaf.type.name === 'image' || leaf.type.name === 'inline_image' ? `[image${leaf.attrs.alt ? `: ${leaf.attrs.alt}` : ''}]` : leaf.type.name === 'video' ? `[video${leaf.attrs.title ? `: ${leaf.attrs.title}` : ''}]` : leaf.type.name === 'hard_break' ? '\n' : ''));
 }
 
 /** The kind of a top-level block as the assistant sees it. */

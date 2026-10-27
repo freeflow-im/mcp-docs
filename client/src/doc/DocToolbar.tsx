@@ -83,7 +83,7 @@ export const ICONS = {
   clear: 'M6 4h9l3 3-9 9H6zM4 20h16M9 16l-3-3',
 };
 
-export function DocToolbar({ ctl, onLink, onInsertImage, onInsertVideo, onEditImage }: { ctl: DocController; onLink(): void; onInsertImage(): void; /** Open the video dialog; without it the button is not shown. */ onInsertVideo?(): void; /** Open the image editor on the selected picture; without it the button is not shown. */ onEditImage?(): void }) {
+export function DocToolbar({ ctl, onLink, onInsertImage, onInsertVideo, onEditImage, sign }: { ctl: DocController; onLink(): void; onInsertImage(): void; /** Open the video dialog; without it the button is not shown. */ onInsertVideo?(): void; /** Open the image editor on the selected picture; without it the button is not shown. */ onEditImage?(): void; /** The Sign menu (components/SignMenu.tsx), where the page has the user's signatures. */ sign?: ReactNode }) {
   const block = ctl.currentBlock();
   const inList = block === 'bullet_list' || block === 'ordered_list';
   const isNode = block === 'image' || block === 'video' || block === 'horizontal_rule';
@@ -193,6 +193,7 @@ export function DocToolbar({ ctl, onLink, onInsertImage, onInsertVideo, onEditIm
           {icon(ICONS.video)}
         </Btn>
       )}
+      {sign}
       {onEditImage && block === 'image' && (
         <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={onEditImage} title="Crop, rotate, adjust and draw on the picture (or double-click it)">
           Edit image

@@ -183,7 +183,7 @@ class Writer {
     };
     node.forEach((child) => {
       const href = child.marks.find((mk) => mk.type.name === 'link')?.attrs.href as string | undefined;
-      const run = child.isText ? `<w:r>${rPr(child.marks, !!href)}${textRuns(child.text ?? '')}</w:r>` : child.type.name === 'hard_break' ? '<w:r><w:br/></w:r>' : '';
+      const run = child.isText ? `<w:r>${rPr(child.marks, !!href)}${textRuns(child.text ?? '')}</w:r>` : child.type.name === 'hard_break' ? '<w:r><w:br/></w:r>' : child.type.name === 'inline_image' ? this.inlinePicture(child) : '';
       if (!run) return;
       if (href) {
         if (link?.href !== href) {
@@ -198,6 +198,11 @@ class Writer {
     });
     flush();
     return out.join('');
+  }
+
+  private inlinePicture(node: PMNode): string {
+    const img = this.inlinePictures.get(node.attrs.src as string);
+    return img ? `<w:r>${this.drawing(img, node)}</w:r>` : '';
   }
 
   private image(src: string): Promise<Img | null> {
@@ -221,18 +226,33 @@ class Writer {
   private async picture(node: PMNode): Promise<string> {
     const img = await this.image(node.attrs.src as string);
     if (!img) return '';
-    // A picture with no width of its own is shown at its size, as wide as the page at most.
+    return `<w:p>${pPr({ align: node.attrs.align as string | null })}<w:r>${this.drawing(img, node)}</w:r></w:p>`;
+  }
+
+  /** The pictures in lines of text, loaded before writing, since a paragraph's runs are written at once. */
+  private inlinePictures = new Map<string, Img | null>();
+
+  async loadInlinePictures(doc: PMNode): Promise<void> {
+    const srcs = new Set<string>();
+    doc.descendants((n) => {
+      if (n.type.name === 'inline_image') srcs.add(n.attrs.src as string);
+    });
+    for (const src of srcs) this.inlinePictures.set(src, await this.image(src));
+  }
+
+  /** A picture as Word draws it in a run, at the node's width (or its own size, as wide as the page at most). */
+  private drawing(img: Img, node: PMNode): string {
     const w = (node.attrs.width as number | null) ?? (img.width ? Math.min(img.width, DOC_PAGE_WIDTH) : 480);
     const h = img.width && img.height ? Math.round((w * img.height) / img.width) : Math.round(w * 0.75);
     const [cx, cy] = [Math.round(w * EMU_PER_PX), Math.round(h * EMU_PER_PX)];
     const id = ++this.drawingId;
     const alt = esc((node.attrs.alt as string) ?? '');
-    const drawing =
+    return (
       `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Picture ${id}" descr="${alt}"/>` +
       `<a:graphic><a:graphicData uri="${NS.pic}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="Picture ${id}"/><pic:cNvPicPr/></pic:nvPicPr>` +
       `<pic:blipFill><a:blip r:embed="${img.rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
-      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
-    return `<w:p>${pPr({ align: node.attrs.align as string | null })}<w:r>${drawing}</w:r></w:p>`;
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`
+    );
   }
 
   /** A list: its own numbering, so each list keeps its kind and start and lists side by side stay apart. */
@@ -380,6 +400,7 @@ export async function docDocx(doc: Doc, title: string, loadImage: DocxImageLoade
   const writer = new Writer(loadImage);
   writer.rel('styles', 'styles.xml');
   writer.rel('settings', 'settings.xml');
+  await writer.loadInlinePictures(node);
   const blocks: string[] = [];
   for (let i = 0; i < node.childCount; i++) blocks.push(await writer.block(node.child(i)));
   if (!blocks.join('')) blocks.push('<w:p/>');

@@ -3353,6 +3353,20 @@ button.agent-tool-label:hover {
 .doc-content s {
   text-decoration: line-through;
 }
+/* A picture in a line of text (a signature on a form's line): on the line, the ink a little below it as a pen's is. */
+.doc-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: -0.35em;
+}
+.doc-inline-image:not([style*='width']) {
+  max-height: 4em;
+}
+.doc-content .doc-inline-image.ProseMirror-selectednode {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
 .doc-image {
   position: relative;
   display: block;
