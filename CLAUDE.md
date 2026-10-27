@@ -4,7 +4,8 @@ An editor for office files and more: spreadsheets, presentations, documents, Mar
 and videos, with a built-in AI assistant, and an MCP server so other agents can work on the same files. One
 codebase ships as three products (names in `shared/brand.ts`):
 
-- **MCP Docs on the web**, the hosted app at docs.freeflow.im: accounts, files stored on the server.
+- **MCP Docs on the web**, the hosted app at mcpdocs.freeflow.im (its official address, the canonical one in its pages and
+  sitemap; docs.freeflow.im serves it too and stays, as the ChatGPT plugin's server address): accounts, files stored on the server.
 - **MCP Docs**, the desktop app (`desktop/`, Electron): the same server and client over a folder of real
   Word, PowerPoint, Excel, Markdown and CSV files, and an MCP server for agents on the machine (Claude Code).
 - **Universal Docs in ChatGPT**, the ChatGPT plugin (`plugin/`): model tools and a web view, on the hosted app. It

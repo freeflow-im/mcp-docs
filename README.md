@@ -349,7 +349,7 @@ OAuth 2.0).
 ## Web version
 
 The same app runs as a web service with accounts (`npm run dev`, or `npm run build && npm start`), hosted as
-MCP Docs at docs.freeflow.im, where it is also a plugin for ChatGPT (`plugin/`, named Universal Docs there). The desktop app
+MCP Docs at mcpdocs.freeflow.im, where it is also a plugin for ChatGPT (`plugin/`, named Universal Docs there, at docs.freeflow.im). The desktop app
 shows it in its Web tabs (see Your web files).
 
 ```sh

@@ -23,7 +23,7 @@ The installer asks which agents to add it to and prints the server's address for
 For the web version (beta), connect any client that supports remote MCP servers with OAuth:
 
 ```sh
-claude mcp add --transport http universal-docs https://docs.freeflow.im/mcp/v2
+claude mcp add --transport http universal-docs {{origin}}/mcp/v2
 ```
 
 ## What your agent can do

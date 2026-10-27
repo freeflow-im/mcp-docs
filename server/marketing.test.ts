@@ -82,6 +82,14 @@ describe('the feature pages', () => {
     expect((await app.inject({ method: 'GET', url: '/llms.txt' })).body).toContain(`(https://docs.test/features/${first.slug}.md)`);
   });
 
+  it('have the address of the app where their text names it', async () => {
+    for (const url of ['/features/ai-agents', '/features/ai-agents.md']) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.body).toContain('https://docs.test/mcp/v2');
+      expect(res.body).not.toContain('{{origin}}');
+    }
+  });
+
   it('are not found by any other name', async () => {
     expect((await app.inject({ method: 'GET', url: '/features/nothing' })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/features/..%2Fpackage.md' })).statusCode).toBe(404);

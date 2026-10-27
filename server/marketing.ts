@@ -2,6 +2,7 @@
 // served two ways: as HTML, for people and for crawlers that do not run the app's scripts, and as the Markdown itself
 // (/features/<slug>.md), for agents, which /llms.txt points to. /sitemap.xml and /robots.txt list them. The pages are
 // plain HTML from the server, as the legal pages are, styled by client/public/marketing/site.css.
+// `{{origin}}` in a page's text is the app's address.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { marked, type Token, type Tokens } from 'marked';
@@ -165,13 +166,17 @@ function cards(pages: FeaturePage[]): string {
     .join('')}</div>`;
 }
 
+/** A page with the app's address in its text. */
+const atOrigin = (p: FeaturePage, origin: string): FeaturePage => ({ ...p, lede: p.lede.replaceAll('{{origin}}', origin), rest: p.rest.replaceAll('{{origin}}', origin) });
+
 /** A feature's page as HTML, or null when there is none by that name. */
 export function featureHtml(slug: string, origin: string): string | null {
   const pages = featurePages();
-  const p = pages.find((x) => x.slug === slug);
-  if (!p) return null;
+  const found = pages.find((x) => x.slug === slug);
+  if (!found) return null;
+  const p = atOrigin(found, origin);
   const path = `/features/${p.slug}`;
-  const others = pages.filter((x) => x !== p);
+  const others = pages.filter((x) => x !== found);
   const ld: unknown[] = [
     { ...APP(origin), '@id': `${origin}/#app` },
     {
@@ -208,9 +213,10 @@ ${others.length ? `<section class="site-more"><h2>More of MCP Docs</h2>${cards(o
 /** A feature's page as Markdown, for agents: the file without its front matter, with its picture and the links an
  * agent needs (pictures and links absolute, since the text may be read away from the site). Null when there is none. */
 export function featureMarkdown(slug: string, origin: string): string | null {
-  const p = featurePages().find((x) => x.slug === slug);
-  if (!p) return null;
-  const others = featurePages().filter((x) => x !== p);
+  const found = featurePages().find((x) => x.slug === slug);
+  if (!found) return null;
+  const p = atOrigin(found, origin);
+  const others = featurePages().filter((x) => x !== found);
   return `# ${p.h1}
 
 > ${p.description}
