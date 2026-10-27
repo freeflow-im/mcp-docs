@@ -2,7 +2,7 @@
 // App shown in ChatGPT) uses to load and save files, and the app itself as a UI resource.
 //
 // One McpServer is built per HTTP request (stateless streamable HTTP), so this must stay cheap.
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { EXTENSION_ID, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
@@ -20,6 +20,7 @@ import { ConflictError, DECK_EDIT_TOOLS, RESULT_IMAGES, DOC_EDIT_TOOLS, FILE_KIN
 /**
  * The app's resource URI. Hosts capture the HTML by URI when the plugin is created or its tools refreshed, so
  * the URI carries the bundle's content hash: a rebuilt app is a new URI, never a stale copy under the old one.
+ * An old URI is still read (a published app keeps the one it was reviewed with) and answers with the current app.
  */
 export const appUri = (hash: string): string => `ui://freeflow-docs/app-${hash}.html`;
 /**
@@ -410,10 +411,14 @@ export function createMcpServer(service: FileService, opts: McpOptions): McpServ
   const mimeType = opts.legacyMime ? 'text/html+skybridge' : RESOURCE_MIME_TYPE;
   const pick = opts.resourceMeta ?? 'full';
   const contentMeta = pick === 'none' ? undefined : pick === 'ui' ? { ui: uiMeta.ui } : pick === 'legacy' ? Object.fromEntries(Object.entries(uiMeta).filter(([k]) => k.startsWith('openai/widget'))) : uiMeta;
-  if (ui)
-    server.registerResource('docs-app', APP_URI, { title: 'Universal Docs', mimeType }, async () => ({
-      contents: [{ uri: APP_URI, mimeType, text: opts.helloPage ? HELLO : appHtml(opts.bundle(), opts.hostedAssets ? opts.publicUrl : null, opts.publicUrl), ...(contentMeta ? { _meta: contentMeta } : {}) }],
-    }));
+  const appContents = (uri: string) => ({
+    contents: [{ uri, mimeType, text: opts.helloPage ? HELLO : appHtml(opts.bundle(), opts.hostedAssets ? opts.publicUrl : null, opts.publicUrl), ...(contentMeta ? { _meta: contentMeta } : {}) }],
+  });
+  if (ui) {
+    server.registerResource('docs-app', APP_URI, { title: 'Universal Docs', mimeType }, async () => appContents(APP_URI));
+    // A published app keeps the URI it was reviewed with, so an earlier bundle's URI is still the app (the current one).
+    server.registerResource('docs-app-earlier', new ResourceTemplate(appUri('{hash}'), { list: undefined }), { title: 'Universal Docs', mimeType }, async (uri) => appContents(uri.href));
+  }
 
   // Opens from ChatGPT's sidebar: the whole app, with the composer alongside.
   if (appTools)

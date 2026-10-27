@@ -191,6 +191,14 @@ describe('MCP server', () => {
     expect(r.contents[0]._meta).toMatchObject({ 'openai/ui': { preferredDisplayMode: 'inline' } });
   });
 
+  it('serves the app under an earlier bundle hash, which a published app keeps', async () => {
+    const earlier = appUri('4721026a6b');
+    const r = await client.readResource({ uri: earlier });
+    expect(r.contents[0].uri).toBe(earlier);
+    expect((r.contents[0] as { text: string }).text).toContain('console.log(1)');
+    expect((await client.listResources()).resources.map((x) => x.uri)).toEqual([APP_URI]);
+  });
+
   it('edits the open document from the composer', async () => {
     const created = await call('create_doc', { title: 'Notes', markdown: 'Hello.\n' });
     expect((created.data?.open as { id: string }).id).toBe((created.data?.file as { id: string }).id);
