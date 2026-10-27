@@ -252,6 +252,7 @@ ${cards(pages)}
     origin,
     path: '/features',
     title: 'Features | MCP Docs',
+    image: `${origin}/marketing/og-image.jpg`,
     description: 'What MCP Docs edits: PowerPoint, Excel and Word files, PDFs, Markdown and pictures, with an AI assistant and an MCP server for Claude Code, Codex and other agents.',
     ld,
     main,

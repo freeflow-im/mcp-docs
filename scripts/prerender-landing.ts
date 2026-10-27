@@ -25,7 +25,7 @@ try {
         operatingSystem: 'macOS, Windows, Web',
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
         downloadUrl: 'https://github.com/freeflow-im/mcp-docs/releases/latest',
-        image: `${O}/marketing/promo-poster.webp`,
+        image: `${O}/marketing/og-image.jpg`,
       },
       { '@type': 'WebSite', name: 'MCP Docs', url: `${O}/` },
     ],
@@ -39,7 +39,10 @@ try {
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:url" content="${O}/" />
-    <meta property="og:image" content="${O}/marketing/promo-poster.webp" />
+    <meta property="og:image" content="${O}/marketing/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A presentation open in MCP Docs, with the assistant answering a question about it" />
     <meta name="twitter:card" content="summary_large_image" />
     <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`;
   const index = readFileSync(new URL('index.html', DIST), 'utf8');
