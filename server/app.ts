@@ -2,12 +2,13 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { LEGAL_PATHS, legalPage } from './legal.ts';
 import { llmsTxt } from './llms.ts';
+import { featureHtml, featureMarkdown, featuresIndexHtml, robotsTxt, sitemapXml } from './marketing.ts';
 import { scratchPadName } from '../shared/docNames.ts';
 import { sniffImageType } from './importFile.ts';
 import { fetchPublicFile, WebFetchError } from './webFetch.ts';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -38,7 +39,7 @@ import { Backup } from './backup.ts';
 import { r2FromEnv, S3ObjectStore, type ObjectStore } from './blob.ts';
 import { openDb } from './db.ts';
 import { EXPORT_FORMATS, ExportError, exportAll, exportFile, exportFolder, imageSource, loadFile, type ExportFormat } from './export.ts';
-import { appName } from '../shared/brand.ts';
+import { appName, ORIGIN_MARK } from '../shared/brand.ts';
 import { openGettingStarted } from './gettingStarted.ts';
 import { isFileId } from './ids.ts';
 import { ImageStore } from './images.ts';
@@ -622,6 +623,21 @@ export async function buildApp(opts: AppOptions) {
 
   // For agents, which do not run the app's scripts: what this is and how to connect to its MCP server.
   app.get('/llms.txt', async (req, reply) => reply.type('text/markdown; charset=utf-8').header('cache-control', 'public, max-age=300').send(llmsTxt(originOf(req), !!pluginOAuth)));
+
+  // The feature pages (server/marketing.ts): HTML for people and crawlers, and each as Markdown for agents, at its
+  // address with .md or when the request asks for Markdown; the sitemap and robots.txt that list them.
+  const publicPage = (reply: FastifyReply, type: string, body: string) => reply.type(type).header('cache-control', 'public, max-age=300').send(body);
+  app.get('/features', async (req, reply) => publicPage(reply, 'text/html; charset=utf-8', featuresIndexHtml(originOf(req))));
+  app.get<{ Params: { page: string } }>('/features/:page', async (req, reply) => {
+    const md = req.params.page.endsWith('.md') || /\btext\/markdown\b/.test(req.headers.accept ?? '');
+    const slug = req.params.page.replace(/\.md$/, '');
+    const body = md ? featureMarkdown(slug, originOf(req)) : featureHtml(slug, originOf(req));
+    if (body === null) return reply.code(404).type('text/plain; charset=utf-8').send('Not found');
+    reply.header('vary', 'accept');
+    return publicPage(reply, md ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8', body);
+  });
+  app.get('/sitemap.xml', async (req, reply) => publicPage(reply, 'application/xml; charset=utf-8', sitemapXml(originOf(req))));
+  app.get('/robots.txt', async (req, reply) => publicPage(reply, 'text/plain; charset=utf-8', robotsTxt(originOf(req))));
 
   // Liveness/readiness for the hosting platform: verifies the database is reachable.
   app.get('/api/health', async (_req, reply) => {
@@ -2120,9 +2136,16 @@ export async function buildApp(opts: AppOptions) {
 
   // --- Static client (production) ----------------------------------------------
   if (opts.staticDir && existsSync(opts.staticDir)) {
-    await app.register(fastifyStatic, { root: opts.staticDir, wildcard: false });
+    // `index: false`: / is answered below, as the front page already drawn for a visitor.
+    await app.register(fastifyStatic, { root: opts.staticDir, wildcard: false, index: false });
+    const landingFile = path.join(opts.staticDir, 'landing.html');
+    const landing = existsSync(landingFile) ? readFileSync(landingFile, 'utf8') : null;
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not found' });
+      // The page with the front page in it (scripts/prerender-landing.ts) for a visitor at /; the app's own page for
+      // everyone else, and for every other address.
+      if (landing && !req.user && req.method === 'GET' && req.url.split('?')[0] === '/')
+        return reply.type('text/html; charset=utf-8').header('cache-control', 'no-cache').send(landing.replaceAll(ORIGIN_MARK, originOf(req)));
       return reply.sendFile('index.html');
     });
   }

@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // Keep the browser's Host header so OAuth redirect URIs built by the server point at this dev server.
-    proxy: Object.fromEntries(['/api', '/privacy', '/terms', '/support', '/llms.txt'].map((p) => [p, { target: 'http://localhost:3001', changeOrigin: false }])),
+    proxy: Object.fromEntries(['/api', '/privacy', '/terms', '/support', '/llms.txt', '/features', '/sitemap.xml', '/robots.txt'].map((p) => [p, { target: 'http://localhost:3001', changeOrigin: false }])),
   },
   build: { outDir: '../dist/client', emptyOutDir: true },
   test: {

@@ -54,7 +54,7 @@ describe('public pages', () => {
       expect(llms.statusCode).toBe(200);
       expect(llms.headers['content-type']).toContain('text/markdown');
       expect(llms.body).toContain('# MCP Docs');
-      expect(llms.body).not.toContain('/mcp');
+      expect(llms.body).not.toContain('/mcp/v2');
     } finally {
       await a.close();
     }

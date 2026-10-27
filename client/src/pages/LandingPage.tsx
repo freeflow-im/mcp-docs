@@ -1,6 +1,7 @@
 // The hosted app's front page for visitors who are not signed in: what MCP Docs is, the promo video, a box for each
 // kind of file it edits, and the ways in: the desktop app first, then the web version (in beta), whose sign-in and
 // sign-up are their own pages (/login, /register). The pictures and video are in client/public/marketing (made from marketing/ at the repo root).
+// A box whose feature has a page of its own (content/features, served by the server: server/marketing.ts) links to it.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HomeIcon } from '../components/Logo.tsx';
@@ -81,27 +82,31 @@ function DownloadButtons({ links, big, first, second }: { links: Record<Platform
   return <>{visitorOnWindows ? [win, mac] : [mac, win]}</>;
 }
 
-const FEATURES: { image: string; title: string; text: string; alt: string }[] = [
+const FEATURES: { image: string; title: string; text: string; alt: string; page?: string }[] = [
   {
     image: 'slides',
     title: 'Presentations',
+    page: 'presentations',
     text: 'Open and save PowerPoint files. Diagrams, tables, charts, videos and themes, then present right from the browser.',
     alt: 'A presentation on multi-head attention, with a diagram of eight attention heads',
   },
   {
     image: 'spreadsheet',
+    page: 'spreadsheets',
     title: 'Spreadsheets',
     text: 'Excel files with formulas, filters, charts and formatting. Ask the assistant to sort, clean up or fill in the data.',
     alt: 'A spreadsheet of recent YC companies with their batch, industry and website',
   },
   {
     image: 'document',
+    page: 'documents',
     title: 'Documents',
     text: 'Word documents with headings, pictures and video. Write them yourself, or have an agent draft and edit them.',
     alt: 'A document with a story and a picture of a corgi surfing beside a cat on a jet ski',
   },
   {
     image: 'markdown',
+    page: 'markdown',
     title: 'Markdown',
     text: 'GitHub-flavored Markdown with a live preview beside the text, and Mermaid diagrams drawn as you type.',
     alt: 'A Markdown summary of a paper, its text on the left and the formatted preview on the right',
@@ -109,20 +114,24 @@ const FEATURES: { image: string; title: string; text: string; alt: string }[] = 
   {
     image: 'pdf',
     title: 'PDFs',
+    page: 'pdfs',
     text: 'Read, sign and fill in PDFs. Turn any PDF, scanned pages included, into Markdown your agents can work with.',
     alt: 'A PDF open in the viewer with its page thumbnails and a Convert to Markdown button',
   },
   {
     image: 'image',
+    page: 'images',
     title: 'Images',
     text: 'Crop, draw, add text, adjust colors and stack layers. Or just ask: the assistant can remove a background in one step.',
     alt: 'A photo of a running dog in the image editor, its background removed by the assistant',
   },
 ];
 
-export function LandingPage() {
+/** `origin` is the app's address; the copy rendered when the app is built (`landingPrerender.tsx`) is given a mark the
+ * server replaces. */
+export function LandingPage({ origin = window.location.origin }: { origin?: string }) {
   const name = appName();
-  const mcpUrl = `${window.location.origin}/mcp/v2`;
+  const mcpUrl = `${origin}/mcp/v2`;
   const downloads = useDownloads();
   return (
     <div className="landing">
@@ -179,21 +188,39 @@ export function LandingPage() {
         <section className="landing-section" id="features">
           <h2>One editor for every file</h2>
           <div className="landing-grid">
-            {FEATURES.map((f) => (
-              <article key={f.image} className="landing-card">
-                <div className="landing-shot">
-                  <img src={`/marketing/${f.image}.webp`} alt={f.alt} loading="lazy" width="1600" height="964" />
-                </div>
-                <h3>{f.title}</h3>
-                <p>{f.text}</p>
-              </article>
-            ))}
+            {FEATURES.map((f) => {
+              const body = (
+                <>
+                  <div className="landing-shot">
+                    <img src={`/marketing/${f.image}.webp`} alt={f.alt} loading="lazy" width="1600" height="964" />
+                  </div>
+                  <h3>{f.title}</h3>
+                  <p>{f.text}</p>
+                  {f.page && <span className="landing-more">Learn more →</span>}
+                </>
+              );
+              // The pages are the server's, not the app's routes: a plain link loads them.
+              return f.page ? (
+                <a key={f.image} className="landing-card" href={`/features/${f.page}`}>
+                  {body}
+                </a>
+              ) : (
+                <article key={f.image} className="landing-card">
+                  {body}
+                </article>
+              );
+            })}
           </div>
         </section>
 
         <section className="landing-section landing-agents" id="agents">
           <h2>Built for agents, not just people</h2>
-          <p className="landing-sub">Two ways to put AI to work on your files. Every change shows up live, and every change can be undone.</p>
+          <p className="landing-sub">
+            Two ways to put AI to work on your files. Every change shows up live, and every change can be undone.{' '}
+            <a className="landing-more-link" href="/features/ai-agents">
+              More on MCP Docs for agents →
+            </a>
+          </p>
           <div className="landing-pair">
             <div className="landing-panel">
               <h3>The built-in assistant</h3>

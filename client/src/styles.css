@@ -6530,6 +6530,23 @@ img.thumb-image {
     box-shadow 0.2s,
     transform 0.2s;
 }
+a.landing-card {
+  display: block;
+  text-decoration: none;
+}
+.landing-sub .landing-more-link {
+  color: var(--blue-dark);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.landing-more {
+  display: inline-block;
+  margin: 12px 22px 0;
+  color: var(--blue-dark);
+  font-weight: 600;
+  font-size: 14.5px;
+}
 .landing-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 18px 40px -18px rgba(15, 23, 42, 0.3);

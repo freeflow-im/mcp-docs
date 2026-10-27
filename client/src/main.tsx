@@ -34,10 +34,14 @@ function RequireAuth({ children }: { children: ReactElement }) {
   return children;
 }
 
+// The server sends visitors the front page already drawn (`landingPrerender.tsx`); it stays while the app asks who is
+// signed in, instead of flashing "Loading…".
+const PRERENDERED = !!document.getElementById('root')?.firstElementChild;
+
 /** The home page: the files of a user who is signed in, the front page (what the app is) for a visitor. */
 function Home() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="page-loading">Loading…</div>;
+  if (loading) return PRERENDERED ? <LandingPage /> : <div className="page-loading">Loading…</div>;
   return user ? <HomePage /> : <LandingPage />;
 }
 

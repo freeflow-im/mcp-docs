@@ -1,4 +1,5 @@
 import { DEVICE_ACCESS_TTL_MS, DEVICE_GRANT, REFRESH_TTL_MS } from '../plugin/server/oauth.ts';
+import { featurePages } from './marketing.ts';
 
 // /llms.txt: what the app is and how an agent connects to it, as Markdown. The site itself is a single-page
 // app, so an agent that fetches it without running scripts sees nothing; this is the page it can read.
@@ -8,10 +9,10 @@ export function llmsTxt(origin: string, mcp: boolean): string {
   const days = (ms: number) => Math.round(ms / (24 * 60 * 60 * 1000));
   const about = `# MCP Docs
 
-> MCP Docs is a web app for text documents, Markdown files, spreadsheets and slide presentations, with a place for stored files (PDFs, pictures, videos, web pages). It imports Word, Excel, PowerPoint, CSV and Markdown files.
+> MCP Docs is an editor for Word, PowerPoint and Excel files, PDFs, Markdown, CSV and pictures, with a built-in AI assistant and an MCP server so agents can work on the same files. It is a free, open-source desktop app for macOS and Windows (\`npx @freeflow-im/mcp-docs\` installs it and adds it to Claude Code and Codex), and a web app in beta.
 
-The app is at ${origin}. It is a single-page app: its pages need a browser, so read this file rather than the site's HTML.
-`;
+The web app is at ${origin}. It is a single-page app whose pages need a browser; this file and the feature pages below are Markdown to read instead.
+${features(origin)}`;
   if (!mcp) return `${about}\n## Links\n\n- [Support](${origin}/support)\n- [Privacy Policy](${origin}/privacy)\n- [Terms of Service](${origin}/terms)\n`;
   return `${about}
 ## MCP server
@@ -85,4 +86,11 @@ Read before editing (\`read_doc\`, \`read_deck\`, \`get_sheet_overview\`): block
 - [Privacy Policy](${origin}/privacy)
 - [Terms of Service](${origin}/terms)
 `;
+}
+
+/** The feature pages, each as Markdown. */
+function features(origin: string): string {
+  const pages = featurePages();
+  if (!pages.length) return '';
+  return `\n## Features\n\n${pages.map((p) => `- [${p.h1}](${origin}/features/${p.slug}.md): ${p.description}`).join('\n')}\n`;
 }

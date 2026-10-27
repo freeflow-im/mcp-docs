@@ -5,3 +5,7 @@ export const HOSTED_NAME = 'MCP Docs';
 export const LOCAL_NAME = 'MCP Docs';
 
 export const appName = (local: boolean): string => (local ? LOCAL_NAME : HOSTED_NAME);
+
+/** In the front page drawn when the app is built (client/src/landingPrerender.tsx), where the server puts the app's
+ * address before sending it (server/app.ts). */
+export const ORIGIN_MARK = '__MCP_DOCS_ORIGIN__';

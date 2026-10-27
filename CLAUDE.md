@@ -245,6 +245,15 @@ type stripping; imports use `.ts` extensions.
   are watched (`DirWatchers`, `server/folderWatch.ts`, not recursively), a file whose time is not the one the store
   knows is a new revision (`LocalSheetStore.fileChanged`/`retime`), and `GET /api/local/folder-changes?folder=` tells
   the home page's list to load again.
+- The hosted app's public site for visitors: the front page (`LandingPage`) is drawn when the app is built
+  (`npm run build` runs `scripts/prerender-landing.ts` on `client/src/landingPrerender.tsx`, making
+  `dist/client/landing.html` with its head for search engines), and the server sends it at / to a visitor who is not
+  signed in, with the app's address for `ORIGIN_MARK`; the app keeps it while it asks who is signed in. Each box on
+  it can link to a feature page: Markdown with front matter in `content/features/<slug>.md`, served by
+  `server/marketing.ts` as HTML at `/features/<slug>` (styled by `client/public/marketing/site.css`, with structured
+  data, its FAQ section included) and as Markdown for agents at `/features/<slug>.md` (or with `Accept: text/markdown`),
+  listed on `/features`, in `/sitemap.xml` and in `/llms.txt`. A new page is a new file there and a `page` on its
+  box in `LandingPage`'s `FEATURES`.
 - Folders (`shared/folders.ts`): a folder is named by its path (`Reports/2026`, `''` for the top). Files
   carry it in the `folder` column (`SheetMeta.folder`, `StoredFile.folder`); the folders themselves are
   rows on the server (`FolderStore`, `server/folders.ts`) and directories in the desktop app
