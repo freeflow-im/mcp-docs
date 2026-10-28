@@ -1,7 +1,7 @@
 // A stored file that is plain text (StoredFile.text: UTF-8, which ASCII is, found by looking at its bytes),
-// edited as text whatever its name: a log, a config file, source code, a file with no extension. Saved with
-// the Save button or Cmd/Ctrl+S, over the file (the server keeps the version before for one undo), with the
-// line endings and byte order mark it had.
+// edited as text whatever its name: a log, a config file, source code, a file with no extension. Saved as it is
+// typed, as the other editors are (AutoSaver: a moment after the typing stops; ⌘S at once), over the file (the
+// server keeps the version before for one undo), with the line endings and byte order mark it had.
 // In the desktop app, Tail follows a file that grows, a log say: it asks for the bytes past those it has
 // every second, adds them and keeps the end in view (unless the person scrolled up); a file that shrank, or was
 // replaced, is read again from the start. The text is read-only meanwhile.
@@ -9,6 +9,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { StoredFile } from '../../../shared/types.ts';
 import { api } from '../api.ts';
+import { AutoSaver, type SaveSource } from '../state/store.ts';
 import { FindBox, FindToggle } from '../find/FindBox.tsx';
 import { findAll, stepIndex, useFind } from '../find/find.ts';
 import { TextareaMatches } from '../markdown/TextareaMatches.tsx';
@@ -24,14 +25,47 @@ function readText(bytes: ArrayBuffer) {
   return { text: body.replace(/\r\n/g, '\n'), crlf: /\r\n/.test(body), bom };
 }
 
+/** The text as the AutoSaver sees it: an edit is a new version, to save; what is read from the file is not. */
+class TextSource implements SaveSource<string> {
+  document = '';
+  version = 0;
+  private listeners = new Set<() => void>();
+  subscribe = (fn: () => void): (() => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+  edit(next: string): void {
+    this.document = next;
+    this.version++;
+    for (const l of this.listeners) l();
+  }
+}
+
 export function TextFileEditor({ file, onSaved, canTail = false }: { file: StoredFile; onSaved(file: StoredFile): void; canTail?: boolean }) {
   const [text, setText] = useState<string | null>(null);
-  const [saved, setSaved] = useState('');
-  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState<string | null>(null);
   // How the file was written, so a save keeps it: Windows line ends, a byte order mark.
   const form = useRef({ crlf: false, bom: false });
-  const dirty = text !== null && text !== saved;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+  const [source] = useState(() => new TextSource());
+  const [saver] = useState(
+    () =>
+      new AutoSaver<string>(source, async (body) => {
+        const bytes = (form.current.bom ? BOM : '') + (form.current.crlf ? body.replace(/\n/g, '\r\n') : body);
+        onSavedRef.current(await api.updateFile(file.id, bytes));
+      }),
+  );
+  const [, setSaveTick] = useState(0);
+  useEffect(() => saver.subscribe(() => setSaveTick((t) => t + 1)), [saver]);
+  // Leaving the page saves what is waiting. (Not disposed: the saver and its source go with the editor, and StrictMode
+  // runs this cleanup once before the editor is used.)
+  useEffect(() => () => void saver.flush(), [saver]);
+  const dirty = saver.hasUnsavedChanges();
+  const edit = (next: string) => {
+    setText(next);
+    source.edit(next);
+  };
   const [tail, setTail] = useState(false);
   // The bytes read so far, where the next ones start.
   const bytesRead = useRef(0);
@@ -50,8 +84,8 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
         const { text: lf, crlf, bom } = readText(bytes);
         form.current = { crlf, bom };
         bytesRead.current = bytes.byteLength;
+        source.document = lf;
         setText(lf);
-        setSaved(lf);
       })
       .catch((e: unknown) => !gone && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -70,8 +104,9 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
     const show = (next: (text: string) => string) => {
       const el = area.current;
       atEnd.current = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      setText((t) => next(t ?? ''));
-      setSaved((t) => next(t));
+      // Read from the file, so nothing to save.
+      source.document = next(source.document);
+      setText(source.document);
     };
     const poll = async () => {
       try {
@@ -147,55 +182,43 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
     if (at >= 0 && find) ta.setSelectionRange(at, at + find.query.length);
   };
 
-  const save = async () => {
-    if (text === null || !dirty || state === 'saving') return;
-    setState('saving');
-    setError(null);
-    try {
-      const body = (form.current.bom ? BOM : '') + (form.current.crlf ? text.replace(/\n/g, '\r\n') : text);
-      const updated = await api.updateFile(file.id, body);
-      setSaved(text);
-      setState('saved');
-      onSaved(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setState('idle');
-    }
-  };
-  const saveRef = useRef(save);
-  saveRef.current = save;
-
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void saveRef.current();
+        void saver.flush();
       }
     };
+    // Closing the page with a change not yet saved saves it, and asks first.
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!saver.hasUnsavedChanges()) return;
+      void saver.flush();
+      e.preventDefault();
+    };
     window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  }, []);
-  // Leaving with unsaved changes asks first.
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [saver]);
+  const saveLabel = {
+    saved: 'All changes saved',
+    dirty: 'Unsaved changes',
+    saving: 'Saving…',
+    error: `Save failed — retrying${saver.error ? ` (${saver.error})` : ''}`,
+  }[saver.status];
 
   return (
     <div className="text-file">
       <div className="text-file-bar">
-        <span className="save-status">{state === 'saving' ? 'Saving…' : dirty ? 'Unsaved changes' : state === 'saved' ? 'Saved' : 'Plain text'}</span>
+        <span className={`save-status ${saver.status}`}>{saveLabel}</span>
         {canTail && (
-          <label className="text-file-tail" title={dirty ? 'Save your changes first' : undefined}>
+          <label className="text-file-tail" title={dirty ? 'Your changes are being saved' : undefined}>
             <input type="checkbox" checked={tail} disabled={dirty || text === null} onChange={(e) => setTail(e.target.checked)} />
             Tail
           </label>
         )}
-        <button className="btn primary" disabled={!dirty || tail || state === 'saving'} onClick={() => void save()} title="Save (⌘S)">
-          Save
-        </button>
       </div>
       {error && <div className="form-error">{error}</div>}
       {text === null ? (
@@ -207,7 +230,7 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
             className="md-editor text-file-editor"
             value={text}
             readOnly={tail}
-            onChange={(e) => (setText(e.target.value), state === 'saved' && setState('idle'))}
+            onChange={(e) => edit(e.target.value)}
             spellCheck={false}
             autoFocus
             aria-label={file.filename}
@@ -218,7 +241,7 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
               const el = e.currentTarget;
               const { selectionStart: a, selectionEnd: b } = el;
               const next = `${el.value.slice(0, a)}\t${el.value.slice(b)}`;
-              setText(next);
+              edit(next);
               requestAnimationFrame(() => el.setSelectionRange(a + 1, a + 1));
             }}
           />
