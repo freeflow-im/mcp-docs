@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nameWithExt } from '../../../shared/docNames.ts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FavoriteStar } from '../components/FavoriteStar.tsx';
 import { FileSearchButton } from '../components/FileSearch.tsx';
 import { TitleInput } from '../components/TitleInput.tsx';
 import { markdownTitle, type MarkdownDoc } from '../../../shared/markdown.ts';
@@ -349,6 +350,7 @@ function MarkdownWorkbench({ initialMeta, ctl, sync }: { initialMeta: SheetMeta;
         </Link>
         <div className="wb-titles">
           <div className="wb-title-row">
+            <FavoriteStar kind="markdown" id={meta.id} onError={notify} />
             <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
             <TitleInput title={meta.title} label="Document name" onRename={rename} onError={notify} />
             <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>

@@ -16,6 +16,7 @@ import { AgentButton } from '../agent/AgentPanel.tsx';
 import { FILE_CHANGED_EVENT, useRegisterFile } from '../agent/AgentProvider.tsx';
 import { api } from '../api.ts';
 import { fileIcon, formatFileSize } from '../components/FileChip.tsx';
+import { FavoriteStar } from '../components/FavoriteStar.tsx';
 import { FileSearchButton } from '../components/FileSearch.tsx';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
 import { TitleInput } from '../components/TitleInput.tsx';
@@ -149,6 +150,7 @@ export function FilePage() {
           <span>{appName()}</span>
         </Link>
         <span className="file-page-title">
+          {file && <FavoriteStar kind="file" id={file.id} onError={setError} />}
           {file && <FolderCrumbs folder={file.folder} />}
           {file && <TitleInput title={file.filename} label="File name" onRename={(name) => api.renameFile(file.id, name).then((r) => setFile(r.file))} onError={setError} />}
         </span>

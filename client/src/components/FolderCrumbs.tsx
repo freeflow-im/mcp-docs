@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { folderTrail } from '../../../shared/folders.ts';
 import { useAuth } from '../auth.tsx';
-import { fromRecents, listingHref, RECENTS_HREF, returnTo } from '../listing.ts';
+import { fromList, listingHref, returnTo } from '../listing.ts';
 
 export { lastListingHref } from '../listing.ts';
 
@@ -16,13 +16,14 @@ export function FolderCrumbs({ folder, onLeave }: { folder?: string; onLeave?: (
   if (back) folder = back.folder;
   const dir = back?.dir ?? local?.dir;
   const root = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() ?? dir) : 'Your files';
+  const list = fromList();
   return (
     <nav className="folder-crumbs" aria-label="Folder">
-      {/* A file opened from Recents leads back there first. */}
-      {fromRecents() && (
+      {/* A file opened from Recents or Favorites leads back there first. */}
+      {list && (
         <span>
-          <Link to={RECENTS_HREF} onClick={onLeave} title="Back to Recents">
-            Recents
+          <Link to={list.href} onClick={onLeave} title={`Back to ${list.label}`}>
+            {list.label}
           </Link>
           <span className="crumb-sep">/</span>
         </span>

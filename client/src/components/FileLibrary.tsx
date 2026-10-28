@@ -29,6 +29,31 @@ export interface LibraryItem {
   branch?: SheetMeta['branch'];
 }
 
+/** A list beside the folder's (FileLibrary's `otherLists`). */
+export interface OtherList {
+  label: string;
+  active: boolean;
+  onSelect(active: boolean): void;
+  /** Where a file of it is, for the column that replaces "Created". */
+  where(item: LibraryItem): string;
+  /** Where a folder of it is. */
+  folderWhere?(path: string): string;
+  /** The heading of its date column ("Last opened"). */
+  when: string;
+  /** What to say when it has nothing. */
+  empty: string;
+  /** Shown over the list (what could not be listed, what is being opened). */
+  notice?: ReactNode;
+  /** The files listed ahead of the rest whatever the sort (Recents: the ones opened in the app). */
+  first?(item: LibraryItem): boolean;
+  /** Shown below its files (more of them being looked for). While it is there, no files is not "empty". */
+  footer?: ReactNode;
+  /** A file's menu in it, after Open (Favorites: Remove from Favorites); without, a file has none. */
+  actions?(item: LibraryItem): LibraryAction[];
+  /** A folder's menu in it, after Open. */
+  folderActions?(path: string): LibraryAction[];
+}
+
 export interface LibraryAction {
   label: string;
   onClick(): void | Promise<void>;
@@ -187,27 +212,11 @@ export interface FileLibraryProps {
   onCreateFolder?(name: string): Promise<void>;
   onDeleteFolder?(path: string): Promise<void>;
   /**
-   * A second list beside the folder's, chosen with a tab next to the folder's name (the desktop app's
-   * Recents). While it is the one shown, `items` are its files: each is listed with where it is and when,
-   * and can only be opened.
+   * Lists beside the folder's, each chosen with a tab next to the folder's name (Recents, Favorites). While one
+   * is shown, `items` (and `folders`) are its own: each is listed with where it is and when, and can only be
+   * opened, or what its `actions` offer.
    */
-  otherList?: {
-    label: string;
-    active: boolean;
-    onSelect(active: boolean): void;
-    /** Where a file of it is, for the column that replaces "Created". */
-    where(item: LibraryItem): string;
-    /** The heading of its date column ("Last opened"). */
-    when: string;
-    /** What to say when it has nothing. */
-    empty: string;
-    /** Shown over the list (what could not be listed, what is being opened). */
-    notice?: ReactNode;
-    /** The files listed ahead of the rest whatever the sort (Recents: the ones opened in the app). */
-    first?(item: LibraryItem): boolean;
-    /** Shown below its files (more of them being looked for). While it is there, no files is not "empty". */
-    footer?: ReactNode;
-  };
+  otherLists?: OtherList[];
   /** Download a folder and everything in it. Adds "Download" to a folder's menu. */
   onDownloadFolder?(path: string): void;
   /** The files are stored in the cloud (the web): each file's icon carries a faint cloud. */
@@ -322,8 +331,10 @@ function FilePeek({ item, x, y, preview }: { item: LibraryItem; x: number; y: nu
 
 export function FileLibrary(props: FileLibraryProps) {
   const { items, error, importing, onOpen } = props;
-  const other = props.otherList;
-  const otherShown = !!other?.active;
+  const others = props.otherLists ?? [];
+  // The list shown in place of the folder's, if one is.
+  const other = others.find((l) => l.active);
+  const otherShown = !!other;
   const otherFooter = otherShown ? other?.footer : undefined;
   const createKinds = props.createKinds ?? ALL_KINDS;
   // The box shows what was typed right away; a page that keeps the search hears of each change, and its
@@ -630,8 +641,9 @@ export function FileLibrary(props: FileLibraryProps) {
   const upDrop = up?.folder !== undefined ? dropTarget(up.folder) : {};
   const upClass = up?.folder !== undefined ? dropClass(up.folder) : '';
   // A folder's folders are one row that opens to list them (closed unless the user left it open), so the files are
-  // in reach without scrolling past them. A search, or a folder with no files, lists them as they are.
-  const foldersFold = folders.length > 0 && !results && !q && visible.length > 0;
+  // in reach without scrolling past them. A search, a list beside the folder's (Favorites), or a folder with no
+  // files lists them as they are.
+  const foldersFold = folders.length > 0 && !results && !otherShown && !q && visible.length > 0;
   const foldersShown = foldersFold && !foldersOpen ? [] : folders;
   const foldersLabel = `${folders.length} ${folders.length === 1 ? 'folder' : 'folders'}`;
   // Dragging a file over the closed row opens it, so a folder in it can take the drop.
@@ -660,7 +672,17 @@ export function FileLibrary(props: FileLibraryProps) {
       >
         ⋮
       </button>
-      {menuFor === `folder:${f.path}` && (
+      {menuFor === `folder:${f.path}` && otherShown && (
+        <div className="dropdown">
+          <button onClick={() => openFolder(f.path)}>Open</button>
+          {(other!.folderActions?.(f.path) ?? []).map((a) => (
+            <button key={a.label} className={a.danger ? 'danger' : undefined} onClick={() => (setMenuFor(null), void a.onClick())}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {menuFor === `folder:${f.path}` && !otherShown && (
         <div className="dropdown">
           <button onClick={() => openFolder(f.path)}>Open</button>
           {props.onDownloadFolder && <button onClick={() => (setMenuFor(null), props.onDownloadFolder!(f.path))}>Download</button>}
@@ -679,7 +701,32 @@ export function FileLibrary(props: FileLibraryProps) {
     </>
   );
   const itemActions = (s: LibraryItem) =>
-    otherShown ? null : (
+    otherShown ? (
+      other!.actions && (
+        <>
+          <button
+            className="icon-btn"
+            aria-label={`Actions for ${s.title}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuFor(menuFor === s.id ? null : s.id);
+            }}
+          >
+            ⋮
+          </button>
+          {menuFor === s.id && (
+            <div className="dropdown">
+              {opens(s) && <button onClick={() => onOpen(s)}>Open</button>}
+              {other!.actions(s).map((a) => (
+                <button key={a.label} className={a.danger ? 'danger' : undefined} onClick={() => (setMenuFor(null), void a.onClick())}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )
+    ) : (
     <>
       {props.onOpenInNewTab && opens(s) && (
         <button className="btn open-tab-btn" title="Open in a new tab" aria-label={`Open ${s.title} in a new tab`} onClick={() => props.onOpenInNewTab!(s)}>
@@ -834,7 +881,7 @@ export function FileLibrary(props: FileLibraryProps) {
 
       <section className="home-inner">
         <div className="list-heading">
-          <div className={`list-tabs${other ? ' has-tabs' : ''}`}>
+          <div className={`list-tabs${others.length ? ' has-tabs' : ''}`}>
           {!results && props.listIcon}
           {results ? (
             <h2>
@@ -844,7 +891,7 @@ export function FileLibrary(props: FileLibraryProps) {
               </button>
             </h2>
           ) : trail ? (
-            <h2 className={`breadcrumbs${other ? (otherShown ? ' list-tab' : ' list-tab active') : ''}`} aria-label="Folder">
+            <h2 className={`breadcrumbs${others.length ? (otherShown ? ' list-tab' : ' list-tab active') : ''}`} aria-label="Folder">
               {[{ name: '', path: '' }, ...trail].map((f, i, all) => i < Math.max(0, all.length - (props.crumbsShown ?? all.length)) ? null : (
                 <span key={f.path}>
                   {i > Math.max(0, all.length - (props.crumbsShown ?? all.length)) && <span className="crumb-sep">/</span>}
@@ -864,11 +911,12 @@ export function FileLibrary(props: FileLibraryProps) {
           ) : (
             <h2>{props.listTitle ?? 'Your files'}</h2>
           )}
-          {other && !results && (
-            <h2 className={`list-tab${otherShown ? ' active' : ''}`}>
-              {otherShown ? <span aria-current="page">{other.label}</span> : <button className="crumb" onClick={() => other.onSelect(true)}>{other.label}</button>}
-            </h2>
-          )}
+          {!results &&
+            others.map((l) => (
+              <h2 key={l.label} className={`list-tab${l.active ? ' active' : ''}`}>
+                {l.active ? <span aria-current="page">{l.label}</span> : <button className="crumb" onClick={() => l.onSelect(true)}>{l.label}</button>}
+              </h2>
+            ))}
           </div>
           <div className="list-tools">
             {(typeOptions.length > 1 || typeFilter !== 'all') && (
@@ -1039,7 +1087,7 @@ export function FileLibrary(props: FileLibraryProps) {
                   </td>
                   <td className="col-type">Folder</td>
                   <td />
-                  <td />
+                  <td className={otherShown ? 'list-where' : undefined}>{otherShown ? other!.folderWhere?.(f.path) : null}</td>
                   <td className="row-actions" onClick={(e) => e.stopPropagation()}>
                     {folderActions(f)}
                   </td>

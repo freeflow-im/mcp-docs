@@ -309,6 +309,31 @@ describe('a mounted folder', () => {
     }
   });
 
+  it('keeps favorites by their paths: in the open folder, named as its list names them, and anywhere else', async () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'sheetsweb-favorite-'));
+    try {
+      const notes = (await library()).docs.find((d) => d.title === 'notes.md')!;
+      expect((await call('POST', '/api/favorites', { kind: 'markdown', id: notes.id, on: true })).status).toBe(200);
+      expect((await call('POST', '/api/favorites', { folder: 'reports', on: true })).status).toBe(200);
+      expect((await call('POST', '/api/favorites', { path: outside, on: true })).status).toBe(200);
+      type Favs = { files: { path: string; name: string; kind: string }[]; folders: { name: string; path: string }[]; keys: string[] };
+      let favs = (await call<Favs>('GET', '/api/favorites')).body;
+      expect(favs.files.map((f) => [f.path, f.name, f.kind])).toEqual([[at('notes.md'), 'notes.md', 'markdown']]);
+      expect(favs.folders.map((f) => f.path)).toEqual([path.resolve(outside), at('reports')]);
+      // The ones in the open folder are named as its list names them; the one outside it is not in it.
+      expect(favs.keys.sort()).toEqual(['folder:reports', `markdown:${notes.id}`]);
+      // A folder that is gone is not listed, but can still be taken off.
+      rmSync(outside, { recursive: true, force: true });
+      expect((await call<Favs>('GET', '/api/favorites')).body.folders.map((f) => f.path)).toEqual([at('reports')]);
+      expect((await call('POST', '/api/favorites', { path: outside, on: false })).status).toBe(200);
+      for (const what of [{ path: at('notes.md') }, { folder: 'reports' }]) await call('POST', '/api/favorites', { ...what, on: false });
+      favs = (await call<Favs>('GET', '/api/favorites')).body;
+      expect(favs).toEqual({ files: [], folders: [], keys: [] });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('notices files added and removed outside the app', async () => {
     writeFileSync(at('fresh.md'), 'new');
     rmSync(at('-..-escape.md'));

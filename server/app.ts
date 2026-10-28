@@ -20,7 +20,7 @@ import { MAX_MARKDOWN_CHARS, newMarkdownDoc, validateMarkdownDoc, type MarkdownD
 import { CsvError, MAX_CSV_CHARS } from '../shared/csv.ts';
 import { importDocx } from './docxImport.ts';
 import { closePdfReaders, isPdf, PdfError, pdfToMarkdownFile } from './pdfMarkdown.ts';
-import { FileStore, isImageOfType } from './files.ts';
+import { FileStore, isImageOfType, isTextFile } from './files.ts';
 import { checkImageEditRate, editedImageName, EDITABLE_IMAGE_TYPES, ImageEditError, MAX_EDIT_IMAGE_BYTES, MAX_EDIT_PROMPT_CHARS, openaiImageEditor, type ImageEditor } from './imageEdit.ts';
 import { CELL_IMAGE_TYPES, fileTypeOf, HTML_TYPE, isHtmlName, isTextFileType, MAX_CELL_IMAGE_BYTES, MAX_VIDEO_BYTES, PREVIEW_FILE_TYPES, videoTypeOf, VIDEO_TYPES, type DocKind, type SheetMeta, type Workbook } from '../shared/types.ts';
 import { AgentError, AgentService, type AgentOptions } from './agent/agent.ts';
@@ -47,6 +47,7 @@ import { deckPreview, docPreview, markdownPreview, sheetPreview, type FilePrevie
 import { cleanFolderName, cleanFolderPath, folderName, joinFolder, parentFolder } from '../shared/folders.ts';
 import { FolderStore, type Folders } from './folders.ts';
 import { LISTED_EXTS, listedKind, LocalFileStore, LocalFolder, LocalFolders, LocalSheetStore, type FindByName } from './localStore.ts';
+import { Favorites, FOLDER_REF } from './favorites.ts';
 import { openedFiles, recentFiles, RecentOpens, recentsAvailable, whereOf, type Recents } from './recents.ts';
 import { googleFromEnv, GoogleLogin, GoogleLoginError, GOOGLE_STATE_TTL_MS, type GoogleOptions } from './googleAuth.ts';
 import { mountPlugin } from '../plugin/server/mount.ts';
@@ -552,6 +553,7 @@ export async function buildApp(opts: AppOptions) {
   // and in the desktop app then the ones the system knows were opened lately, asked of Spotlight unless the
   // options say otherwise.
   const recentOpens = new RecentOpens(settingsDb);
+  const favorites = new Favorites(settingsDb);
   const recents = opts.local ? (opts.local.recents === undefined ? (recentsAvailable() ? () => recentFiles(LISTED_EXTS) : null) : opts.local.recents) : null;
   app.get('/api/auth/me', async (req) => ({ user: req.user, googleLogin: !!google, ...(folder && req.user ? { local: { dir: folder.root } } : {}) }));
 
@@ -1537,6 +1539,109 @@ export async function buildApp(opts: AppOptions) {
       const found = await recents();
       recentOpens.cacheSystem(found);
       return { files: found.files.map((f) => ({ ...f, kind: listedKind(f.path) })), blocked: found.blocked };
+    });
+
+    // --- Favorites (favorites.ts): the folders and files the user keeps at hand, a tab beside Recents -------------
+    // A request names a file by its kind and id, or a folder by `folder` (its path in the library, or in the open
+    // folder); in the desktop app any file or folder by its absolute `path`, as the list names those outside the open
+    // folder. Null when there is no such file or folder; more than one name when a path that is gone may have been either.
+    const favoriteRefs = (user: string, b: Record<string, unknown>): string[] | null => {
+      if (folder) {
+        if (typeof b.path === 'string' && path.isAbsolute(b.path)) {
+          const p = path.resolve(b.path);
+          let dir: boolean | null = null;
+          try {
+            dir = statSync(p).isDirectory();
+          } catch {
+            // Gone: it can still be taken off the list.
+          }
+          return dir === null ? [p, FOLDER_REF + p] : [dir ? FOLDER_REF + p : p];
+        }
+        if (typeof b.folder === 'string') {
+          const rel = cleanFolderPath(b.folder);
+          return rel === null || !folder.isDir(rel) ? null : [FOLDER_REF + folder.abs(rel)];
+        }
+      } else if (typeof b.folder === 'string') {
+        const p = cleanFolderPath(b.folder);
+        return p && folders.exists(user, p) ? [FOLDER_REF + p] : null;
+      }
+      const kind = (['doc', 'deck', 'sheet', 'markdown', 'file'] as const).find((k) => k === b.kind);
+      if (!kind || typeof b.id !== 'string') return null;
+      if (folder) {
+        const file = kind === 'file' ? (storedFiles as LocalFileStore).get(user, b.id)?.file : (sheets as LocalSheetStore).fileOf(user, b.id);
+        return file ? [file] : null;
+      }
+      return (kind === 'file' ? storedFiles.get(user, b.id) : sheets.get(user, b.id, kind)) ? [`${kind}:${b.id}`] : null;
+    };
+
+    r.post('/api/favorites', async (req, reply) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const refs = favoriteRefs(req.user!.id, body);
+      if (!refs) return reply.code(404).send({ error: 'There is no such file or folder.' });
+      if (body.on === false) for (const ref of refs) favorites.set(req.user!.id, ref, false);
+      else favorites.set(req.user!.id, refs[0], true);
+      return { ok: true };
+    });
+
+    // Whether one file or folder (named as for POST) is a favorite: an editor's star.
+    r.get('/api/favorites/one', async (req, reply) => {
+      const refs = favoriteRefs(req.user!.id, req.query as Record<string, unknown>);
+      if (!refs) return reply.code(404).send({ error: 'There is no such file or folder.' });
+      return { on: refs.some((ref) => favorites.has(req.user!.id, ref)) };
+    });
+
+    // The favorites, the newest first: files as Recents lists them, folders with where they are, and `keys`, the
+    // ones in the library (the desktop app: the open folder) as its list names them (`doc:<id>`, `folder:<path>`).
+    r.get('/api/favorites', async (req) => {
+      const user = req.user!.id;
+      const files = [];
+      const dirs: { name: string; path: string; where: string }[] = [];
+      const keys: string[] = [];
+      for (const { ref, addedAt } of favorites.list(user)) {
+        const isFolder = ref.startsWith(FOLDER_REF);
+        const at = isFolder ? ref.slice(FOLDER_REF.length) : ref;
+        if (folder) {
+          let st;
+          try {
+            st = statSync(at);
+          } catch {
+            continue; // Gone: kept, in case it comes back (a drive, say).
+          }
+          const rel = path.relative(folder.root, at);
+          const inside = !rel.startsWith('..') && !path.isAbsolute(rel);
+          const relPath = rel.split(path.sep).join('/');
+          if (isFolder && st.isDirectory()) {
+            dirs.push({ name: path.basename(at), path: at, where: whereOf(at, homedir()) });
+            if (inside) keys.push(FOLDER_REF + relPath);
+          } else if (!isFolder && st.isFile()) {
+            const kind = listedKind(at);
+            // A plain text file (a log, source code) opens as text, as a stored one does.
+            const text = kind === 'file' && isTextFile(at, { type: 'application/octet-stream', size: st.size, created_at: st.mtime.toISOString() });
+            files.push({ path: at, name: path.basename(at), where: whereOf(at, homedir()), kind, ...(text ? { text: true } : {}), lastUsed: addedAt, size: st.size });
+            const id = inside ? (kind === 'file' ? (storedFiles as LocalFileStore).idOf(user, relPath) : (sheets as LocalSheetStore).idOf(user, relPath)) : null;
+            if (id) keys.push(`${kind}:${id}`);
+          }
+          continue;
+        }
+        // On the web what was deleted is gone for good: it is forgotten.
+        if (isFolder) {
+          if (folders.exists(user, at)) dirs.push({ name: folderName(at), path: at, where: parentFolder(at) });
+          else favorites.set(user, ref, false);
+          continue;
+        }
+        const [kind, id] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
+        if (kind === 'file') {
+          const f = storedFiles.get(user, id);
+          if (f) files.push({ id, kind, name: f.meta.filename, folder: f.meta.folder ?? '', ...(f.meta.text ? { text: true } : {}), lastUsed: addedAt, size: f.meta.size });
+          else favorites.set(user, ref, false);
+        } else {
+          const d = sheets.get(user, id, kind as DocKind);
+          if (d) files.push({ id, kind, name: d.title, folder: d.folder ?? '', ...(d.format ? { format: d.format } : {}), lastUsed: addedAt });
+          else favorites.set(user, ref, false);
+        }
+      }
+      if (!folder) keys.push(...favorites.list(user).map((f) => f.ref));
+      return { files, folders: dirs, keys };
     });
 
     // Copying between the folder and the person's account on the web (webCopy.ts), with the Web tab's session.

@@ -105,6 +105,9 @@ export interface SavedSignature {
 const inFolder = (folder: string | undefined, first = false) => (folder ? `${first ? '?' : '&'}folder=${encodeURIComponent(folder)}` : '');
 
 /** A file of Recents. */
+/** The window event after a file or folder was made a favorite or not (api.setFavorite). */
+export const FAVORITES_CHANGED = 'favorites-changed';
+
 export interface RecentFile {
   /** On the web: the file's id. */
   id?: string;
@@ -196,6 +199,17 @@ export const api = {
   deleteFile: (id: string) => request<{ ok: true }>('DELETE', `/api/files/${encodeURIComponent(id)}`),
   me: () => request<{ user: User | null; googleLogin: boolean; local?: { dir: string } }>('GET', '/api/auth/me'),
   /** Recents: the files last opened in the app (server/recents.ts). */
+  /**
+   * The favorites: files as Recents lists them, folders with where they are (in the desktop app by their absolute
+   * paths), and `keys`, those in the library (the open folder) as the list names them: `doc:<id>`, `folder:<path>`.
+   */
+  favorites: () => request<{ files: RecentFile[]; folders: { name: string; path: string; where: string }[]; keys: string[] }>('GET', '/api/favorites'),
+  /** Whether a file is a favorite (an editor's star). */
+  isFavorite: (kind: RecentFile['kind'], id: string) => request<{ on: boolean }>('GET', `/api/favorites/one?kind=${kind}&id=${encodeURIComponent(id)}`),
+  /** Make a file (kind and id), a folder (its path in the list) or, in the desktop app, anything by its absolute path a favorite, or not. */
+  /** Then FAVORITES_CHANGED is sent on the window, for the lists of them on the page (the File menu's). */
+  setFavorite: (what: { kind: RecentFile['kind']; id: string } | { folder: string } | { path: string }, on: boolean) =>
+    request<{ ok: true }>('POST', '/api/favorites', { ...what, on }).then((r) => (window.dispatchEvent(new Event(FAVORITES_CHANGED)), r)),
   recents: () =>
     request<{
       files: RecentFile[];

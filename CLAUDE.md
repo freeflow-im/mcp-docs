@@ -132,12 +132,13 @@ type stripping; imports use `.ts` extensions.
   hosted app through `WebBridge`, which `main.js` answers with the Web tab's session (`webRequest`).
   Over the file list the breadcrumbs show only the folder and the one above it (`FileLibrary`'s `crumbsShown`; at the
   open folder's top that is its parent on disk, `LocalFolderParent`), each with its full path as its tooltip, and the list
-  starts with a ".." row (`up`). The house button before them (`LocalFolderHome`) goes to the home folder.
+  starts with a ".." row (`up`). The star before them marks the folder shown as a favorite (see Favorites); the house button that went to the home folder (`LocalFolderHome`) is hidden for now.
   The folder button left of it (`LocalFolderMenu`) lists the usual folders in the home folder (`GET /api/local/places`: it, Documents, Downloads, Desktop), and offers Open Folder… (`POST /api/local/choose-folder`,
   `main.js`'s dialog) and Open file by path… (`POST /api/local/open-path`: a file or folder, absolute, `~/` or
   relative to the open folder; one outside it has `main.js` open it, or the file's own folder).
-  Each editor's File menu starts with both (`useOpenInTab`, `client/src/components/OpenInTab.tsx`), which open in a new
-  tab instead (`tab` in the request): one inside the folder by `window.open`, one outside by `main.js` (`openFileInTab`, `openFolder`'s `inTab`).
+  Each editor's File menu starts with an Open menu (`useOpenInTab`, `client/src/components/OpenInTab.tsx`): both of them, then
+  Open Favorites and Open Recents, the user's lists (on the web too). All open in a new tab instead (`tab` in the request): one
+  inside the folder by `window.open`, one outside by `main.js` (`openFileInTab`, `openFolder`'s `inTab`).
   The home page's Scratch pad tile (`ScratchPadTile`) is a menu of the Markdown files in `~/.config/mcp-docs` (`SCRATCH_DIR`,
   `GET /api/local/scratch-pads`) and New scratchpad, which makes `Scratch pad.md`, then ones named for the day
   (`scratchPadName`: `Scratch pad-sep05.md`), and opens it (`POST /api/local/scratch-pad`, with a `name` to open one); outside
@@ -270,6 +271,11 @@ type stripping; imports use `.ts` extensions.
   desktop app the page then asks `GET /api/recents/system` for Spotlight's (slow), shown below. Its last answer is
   kept in the settings database and comes with `GET /api/recents` (`cached`), shown until the new one replaces it;
   only without one is there a spinner.
+- Favorites, the tab after Recents (`/?favorites=1`, `FileLibrary`'s `otherLists`): folders and files the user marks with
+  Add to Favorites in their menu (`server/favorites.ts`, `GET`/`POST /api/favorites`). On the web each is named by kind and id
+  (`folder:<path>` for a folder) and one deleted is forgotten; in the desktop app by its absolute path, in the settings database,
+  so the list is the same in every folder and one outside the open folder opens as Open file by path… opens it. `keys` names
+  those in the list being shown, so each menu says Add or Remove; each editor's header starts with a star, before the file's folders and name (`FavoriteStar`, `GET /api/favorites/one`).
 
 Checks: `npm run typecheck` and `npm test` (vitest). Both must pass before a change is finished.
 

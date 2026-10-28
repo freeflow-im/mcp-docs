@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { nameWithExt } from '../../../shared/docNames.ts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
+import { FavoriteStar } from '../components/FavoriteStar.tsx';
 import { FileSearchButton } from '../components/FileSearch.tsx';
 import { TitleInput } from '../components/TitleInput.tsx';
 import { LAYOUT_IDS, THEME_IDS, THEMES, type Deck } from '../../../shared/deck.ts';
@@ -606,6 +607,7 @@ function DeckWorkbench({ initialMeta, initialNotKept, ctl, sync }: { initialMeta
             </Link>
             <div className="wb-titles">
               <div className="wb-title-row">
+                <FavoriteStar kind="deck" id={meta.id} onError={notify} />
                 <FolderCrumbs folder={meta.folder} onLeave={() => void ctl.saver.flush()} />
                 <TitleInput title={meta.title} label="Presentation name" onRename={rename} onError={notify} />
                 <span className={`save-status ${ctl.saver.status}`}>{saveLabel}</span>

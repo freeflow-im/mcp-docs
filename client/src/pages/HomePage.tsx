@@ -6,6 +6,7 @@ import { useAgent } from '../agent/AgentProvider.tsx';
 import { api, type FolderInfo, type RecentFile } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { Account } from '../components/Account.tsx';
+import { StarButton } from '../components/FavoriteStar.tsx';
 import { FileSearchButton } from '../components/FileSearch.tsx';
 import { FileLibrary, formatWhen, kindIcon, type LibraryItem } from '../components/FileLibrary.tsx';
 import { FileThumb } from '../components/FileThumb.tsx';
@@ -14,8 +15,8 @@ import { Modal, PromptModal } from '../components/Modal.tsx';
 import { MoveModal } from '../components/MoveModal.tsx';
 import { fileBrowserName } from '../desktopBridge.ts';
 import { useFavicon } from '../favicon.ts';
-import { RECENTS_PARAM, rememberListing, rememberReturn, returnTo, useListingScroll } from '../listing.ts';
-import { LocalFolderHome, LocalFolderMenu, LocalFolderParent, parentDir } from '../components/LocalFolderMenu.tsx';
+import { FAVORITES_PARAM, RECENTS_PARAM, rememberListing, rememberReturn, returnTo, useListingScroll } from '../listing.ts';
+import { LocalFolderMenu, LocalFolderParent, parentDir } from '../components/LocalFolderMenu.tsx';
 import { ScratchPadTile } from '../components/ScratchPadTile.tsx';
 import { openFromRecents } from './OpenLocalFile.tsx';
 import { FilePreviewFrame } from '../components/FilePreviewFrame.tsx';
@@ -83,14 +84,85 @@ function FileList() {
   // app then the ones last opened on this computer in any app. There a file of Recents is named by its path,
   // and opening one that is in another folder makes that folder the open one.
   const recents = params.get(RECENTS_PARAM) === '1';
-  const elsewhere = recents && !!local;
-  const showRecents = (on: boolean) =>
+  // Favorites (&favorites=1), also in place of the folder's: the folders and files the user keeps at hand. In the
+  // desktop app they are named by their paths, as Recents' are, and may be anywhere.
+  const favoritesShown = !recents && params.get(FAVORITES_PARAM) === '1';
+  // A list other than the folder's is shown: its rows can only be opened, or what its menu offers.
+  const otherShown = recents || favoritesShown;
+  const elsewhere = otherShown && !!local;
+  const showList = (list: typeof RECENTS_PARAM | typeof FAVORITES_PARAM, on: boolean) =>
     setParams((cur) => {
       const next = new URLSearchParams(cur);
-      if (on) next.set(RECENTS_PARAM, '1');
-      else next.delete(RECENTS_PARAM);
+      next.delete(RECENTS_PARAM);
+      next.delete(FAVORITES_PARAM);
+      if (on) next.set(list, '1');
       return next;
     });
+  const showRecents = (on: boolean) => showList(RECENTS_PARAM, on);
+
+  const [favorites, setFavorites] = useState<{ items: LibraryItem[]; folders: FolderInfo[]; where: Map<string, string>; keys: Set<string> } | null>(null);
+  const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const loadFavorites = () =>
+    api.favorites().then(
+      (r) => {
+        const keyOf = (f: RecentFile) => f.id ?? f.path ?? '';
+        const where = new Map<string, string>();
+        for (const f of r.files) where.set(keyOf(f), f.where ?? (f.folder || 'Your files'));
+        for (const f of r.folders) where.set(`folder:${f.path}`, f.where || (local ? '' : 'Your files'));
+        const items = r.files.map(
+          (f): LibraryItem => ({
+            id: keyOf(f),
+            kind: f.kind,
+            ...(f.format ? { format: f.format } : /\.csv$/i.test(f.name) && f.path ? { format: 'csv' as const } : {}),
+            ...(f.text ? { text: true } : {}),
+            ...(f.folder ? { folder: f.folder } : {}),
+            title: f.name,
+            updatedAt: f.lastUsed,
+            createdAt: f.lastUsed,
+          }),
+        );
+        setFavorites({ items, folders: r.folders.map(({ name, path }) => ({ name, path })), where, keys: new Set(r.keys) });
+        setFavoritesError(null);
+      },
+      (e: Error) => setFavoritesError(e.message),
+    );
+  // Read once (the menus say whether each file is one), and again when the list is shown.
+  useEffect(() => {
+    if (user) void loadFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, favoritesShown]);
+  const setFavorite = (what: Parameters<typeof api.setFavorite>[0], on: boolean) =>
+    api.setFavorite(what, on).then(loadFavorites, (e: Error) => setError(e.message));
+  const favoriteAction = (key: string, what: Parameters<typeof api.setFavorite>[0]) => {
+    const on = !!favorites?.keys.has(key);
+    return { label: on ? 'Remove from Favorites' : 'Add to Favorites', onClick: () => setFavorite(what, !on) };
+  };
+  // A favorite of the desktop app is opened by its path: in the open folder it is shown here, otherwise the window
+  // moves to its folder.
+  // The star before the folder's name: whether the folder shown is one of the Favorites (on the web the top of the
+  // library is not a folder that can be). Not while another list is shown.
+  const folderStar =
+    user && !otherShown && (local || folder) ? (
+      <StarButton on={favorites ? favorites.keys.has(`folder:${folder}`) : null} onClick={() => void setFavorite({ folder }, !favorites?.keys.has(`folder:${folder}`))} />
+    ) : null;
+  const openFavorite = async (s: LibraryItem) => {
+    if (!local) return navigate(pathOf(s));
+    try {
+      const res = await api.openLocalPath(s.id);
+      if (res.file !== undefined) navigate(openFromRecents(res.file, FAVORITES_PARAM));
+    } catch (e) {
+      setFavoritesError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const openFavoriteFolder = async (path: string) => {
+    if (!local) return openFolder(path);
+    try {
+      const res = await api.openLocalPath(path);
+      if (res.folder !== undefined) openFolder(res.folder);
+    } catch (e) {
+      setFavoritesError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const [recentFiles, setRecentFiles] = useState<{ items: LibraryItem[]; where: Map<string, string>; app: Set<string>; blocked: string[] } | null>(null);
   // The desktop app's files from Spotlight, which can take seconds: the app's own (and Spotlight's last answer) are shown while it looks.
   const [recentsSearching, setRecentsSearching] = useState(false);
@@ -317,13 +389,13 @@ function FileList() {
   useEffect(() => setItems(null), [folder]);
   // In the desktop app, other programs add, remove and change files in the folder too: the list follows them.
   useEffect(() => {
-    if (!local || recents || typeof EventSource === 'undefined') return;
+    if (!local || otherShown || typeof EventSource === 'undefined') return;
     const events = new EventSource(`/api/local/folder-changes?folder=${encodeURIComponent(folder)}`);
     events.onmessage = () => void load();
     return () => events.close();
-  }, [local, recents, folder]);
+  }, [local, otherShown, folder]);
   // Back at a list, it is where it was scrolled to.
-  useListingScroll(query, recents ? recentFiles !== null : items !== null && listed === folder);
+  useListingScroll(query, recents ? recentFiles !== null : favoritesShown ? favorites !== null : items !== null && listed === folder);
 
   useEffect(() => {
     document.title = appName();
@@ -359,17 +431,19 @@ function FileList() {
         local ? (
           <>
             <LocalFolderMenu folder={folder} onFile={(rel) => navigate(`/open?file=${encodeURIComponent(rel)}`)} onFolder={openFolder} />
-            <LocalFolderHome onFolder={openFolder} />
+            {folderStar}
             {/* At the folder's top the folder above it on disk is the parent crumb; below, the trail has one. */}
             {!folder && <LocalFolderParent dir={local.dir} />}
           </>
-        ) : undefined
+        ) : (
+          folderStar
+        )
       }
       folder={folderTrail(folder)}
-      folders={recents ? [] : folders}
-      onOpenFolder={openFolder}
+      folders={recents ? [] : favoritesShown ? (favorites?.folders ?? []) : folders}
+      onOpenFolder={favoritesShown ? (p) => void openFavoriteFolder(p) : openFolder}
       up={
-        recents
+        otherShown
           ? undefined
           : folder
             ? { folder: folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '', onOpen: () => openFolder(folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '') }
@@ -378,9 +452,9 @@ function FileList() {
               ? { onOpen: () => void api.openLocalPath(parentDir(local.dir)!).catch((e: Error) => setError(e.message)) }
               : undefined
       }
-      otherList={
+      otherLists={
         user
-          ? {
+          ? [{
               label: 'Recents',
               active: recents,
               onSelect: showRecents,
@@ -411,7 +485,19 @@ function FileList() {
                   )}
                 </>
               ),
-            }
+            },
+            {
+              label: 'Favorites',
+              active: favoritesShown,
+              onSelect: (on) => showList(FAVORITES_PARAM, on),
+              where: (s) => favorites?.where.get(s.id) ?? '',
+              folderWhere: (p) => favorites?.where.get(`folder:${p}`) ?? '',
+              when: 'Added',
+              empty: 'Add a folder or file with its menu (⋮) › Add to Favorites.',
+              notice: favoritesError ? <div className="form-error">{favoritesError}</div> : undefined,
+              actions: (s) => [{ label: 'Remove from Favorites', onClick: () => setFavorite(local ? { path: s.id } : { kind: s.kind, id: s.id }, false) }],
+              folderActions: (p) => [{ label: 'Remove from Favorites', onClick: () => setFavorite(local ? { path: p } : { folder: p }, false) }],
+            }]
           : undefined
       }
       // A file of the desktop app's Recents is somewhere else: no thumbnail, folder or row menu until its folder is open.
@@ -426,7 +512,7 @@ function FileList() {
       onGettingStarted={() => void openGuide()}
       search={search}
       onSearchChange={setSearch}
-      onFind={recents ? undefined : async (q) => {
+      onFind={otherShown ? undefined : async (q) => {
         // Coming back to results that were just shown does not search again; a change to the list does.
         if (lastFind?.text !== q) lastFind = { text: q, result: api.searchLibrary(q).then((r) => ({ folders: r.folders, items: [...r.docs, ...r.files.map(fileItem)], truncated: r.truncated })) };
         const mine = lastFind;
@@ -435,7 +521,7 @@ function FileList() {
           throw e;
         });
       }}
-      onCreateFolder={recents ? undefined : async (name) => {
+      onCreateFolder={otherShown ? undefined : async (name) => {
         await api.createFolder(folder, name);
         await load();
       }}
@@ -445,13 +531,16 @@ function FileList() {
       }}
       cloud={!local}
       onDownloadFolder={(path) => window.location.assign(`/api/folders/download?folder=${encodeURIComponent(path)}`)}
-      onMove={recents ? undefined : async (s, to) => {
+      onMove={otherShown ? undefined : async (s, to) => {
         await api.moveToFolder(s.kind, s.id, to);
         await load();
       }}
       // The desktop app: a file dragged out of the list is the file itself to other apps (Finder, a video editor).
-      onDragOut={local && !recents ? (s) => void api.dragOutLocal(s.kind, s.id).catch((e: Error) => setError(e.message)) : undefined}
-      folderActions={local ? (path) => [{ label: `Open in ${fileBrowserName()}`, onClick: () => void api.revealLocal({ folder: path }).catch((e: Error) => setError(e.message)) }] : undefined}
+      onDragOut={local && !otherShown ? (s) => void api.dragOutLocal(s.kind, s.id).catch((e: Error) => setError(e.message)) : undefined}
+      folderActions={(path) => [
+        ...(user ? [favoriteAction(`folder:${path}`, { folder: path })] : []),
+        ...(local ? [{ label: `Open in ${fileBrowserName()}`, onClick: () => void api.revealLocal({ folder: path }).catch((e: Error) => setError(e.message)) }] : []),
+      ]}
       headerActions={
         <>
           {/* Find a file (⌘P) in every folder, as in the editors; the search box beside it filters this list. */}
@@ -506,7 +595,7 @@ function FileList() {
           <Account />
         </>
       }
-      items={recents ? (recentFiles?.items ?? null) : items}
+      items={recents ? (recentFiles?.items ?? null) : favoritesShown ? (favorites?.items ?? null) : items}
       error={recents ? recentsError : error}
       onCreate={async (kind, title) => {
         if (kind === 'sheet') navigate(`/s/${(await api.createSheet(title, folder)).sheet.id}`);
@@ -540,7 +629,7 @@ function FileList() {
       }
       importing={importing}
       onImport={(file) => void importFile(file)}
-      onOpen={(s) => (recents ? void openRecent(s) : navigate(pathOf(s)))}
+      onOpen={(s) => (recents ? void openRecent(s) : favoritesShown ? void openFavorite(s) : navigate(pathOf(s)))}
       onOpenInNewTab={elsewhere ? undefined : (s) => void window.open(pathOf(s), '_blank')}
       titleLink={elsewhere ? undefined : (s, children) => (
         <Link to={pathOf(s)} className="sheet-title" onClick={(e) => e.stopPropagation()}>
@@ -548,6 +637,7 @@ function FileList() {
         </Link>
       )}
       rowActions={(s) => [
+        ...(user ? [favoriteAction(`${s.kind}:${s.id}`, { kind: s.kind, id: s.id })] : []),
         {
           label: s.kind === 'deck' ? 'Download as PowerPoint' : s.kind === 'doc' || s.kind === 'markdown' ? 'Download as Markdown' : s.kind === 'file' ? 'Download' : s.format === 'csv' ? 'Download as CSV' : 'Download as Excel',
           onClick: () => window.location.assign(s.kind === 'file' ? `/api/files/${s.id}/download` : `/api/files/${s.id}/export`),

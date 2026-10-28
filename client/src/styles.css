@@ -695,6 +695,37 @@ textarea {
 .save-status.error {
   color: var(--danger);
 }
+/* An editor's star before the file's folders and name (FavoriteStar): filled when the file is one of the Favorites. */
+.favorite-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 28px;
+  padding: 0;
+  vertical-align: middle;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.favorite-star:hover {
+  background: rgba(60, 64, 67, 0.08);
+}
+.favorite-star.on {
+  color: #f9ab00;
+}
+/* First in the title row, before the folders and the name, the same in every editor. */
+.wb-title-row .favorite-star {
+  margin-right: -8px;
+}
+.file-page-title .favorite-star {
+  margin-right: 4px;
+  /* Level with the name in the inline title (middle sits it on the text's middle, a little low). */
+  vertical-align: bottom;
+}
 .wb-user {
   display: flex;
   align-items: center;
@@ -771,6 +802,16 @@ textarea {
 }
 .menu-label {
   flex: 1;
+}
+/* A file or folder in a menu (File › Open › Open Favorites): its icon and name, a long name cut short. */
+.menu-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu-shortcut {
   color: var(--muted);
@@ -5755,6 +5796,16 @@ img.thumb-image {
   align-self: center;
   /* Close to the name: the tabs' gap is for between tabs. */
   margin-right: -16px;
+}
+/* The folder's star before its name, placed as the folder button is. */
+.list-tabs .favorite-star {
+  align-self: center;
+  margin-right: -16px;
+}
+/* Level with the names over the tabs' underline (the tab's 5px padding and 2px border below them). */
+.list-tabs.has-tabs .local-folder,
+.list-tabs.has-tabs .favorite-star {
+  margin-bottom: 7px;
 }
 .local-folder-btn {
   display: inline-flex;

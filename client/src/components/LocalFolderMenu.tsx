@@ -122,7 +122,10 @@ export function LocalFolderMenu({ folder, onFile, onFolder }: {
   );
 }
 
-/** Goes to the home folder: shown here when it is the open folder or inside it, else the window moves there. */
+/**
+ * Goes to the home folder: shown here when it is the open folder or inside it, else the window moves there. Not shown
+ * for now: the folder's Favorites star has its place (HomePage).
+ */
 export function LocalFolderHome({ onFolder }: { onFolder(rel: string): void }) {
   return (
     <span className="local-folder">

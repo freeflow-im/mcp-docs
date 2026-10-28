@@ -20,12 +20,20 @@ function last(): string {
   }
 }
 
-/** The Recents list, when that is the list last shown. */
+/** The lists the home page shows in place of the folder's: Recents and Favorites. */
 export const RECENTS_PARAM = 'recents';
-export const RECENTS_HREF = `/?${RECENTS_PARAM}=1`;
-export const rememberRecents = (): void => rememberListing(`?${RECENTS_PARAM}=1`);
-/** Whether the file being shown was opened from Recents: its breadcrumbs then start there. */
-export const fromRecents = (): boolean => new URLSearchParams(last()).get(RECENTS_PARAM) === '1';
+export const FAVORITES_PARAM = 'favorites';
+export type OtherListName = typeof RECENTS_PARAM | typeof FAVORITES_PARAM;
+const LISTS: Record<OtherListName, string> = { recents: 'Recents', favorites: 'Favorites' };
+export const listHref = (list: OtherListName): string => `/?${list}=1`;
+export const RECENTS_HREF = listHref(RECENTS_PARAM);
+export const rememberList = (list: OtherListName): void => rememberListing(`?${list}=1`);
+/** The list the file being shown was opened from, when it is one of those: its breadcrumbs then start there. */
+export function fromList(): { label: string; href: string } | null {
+  const params = new URLSearchParams(last());
+  const list = (Object.keys(LISTS) as OtherListName[]).find((l) => params.get(l) === '1');
+  return list ? { label: LISTS[list], href: listHref(list) } : null;
+}
 
 /**
  * The desktop app: the folder a file was opened from when the window moved to the file's own folder to show it
@@ -63,7 +71,7 @@ export const lastListingHref = (): string => `/${last()}`;
 
 /** The list showing a folder ('' or absent is the top), with the search it had if that is the folder last shown. */
 export function listingHref(folder?: string): string {
-  const search = fromRecents() ? '' : last();
+  const search = fromList() ? '' : last();
   if ((new URLSearchParams(search).get('folder') ?? '') === (folder ?? '')) return `/${search}`;
   return folder ? `/?folder=${encodeURIComponent(folder)}` : '/';
 }

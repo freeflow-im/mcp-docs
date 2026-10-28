@@ -116,3 +116,42 @@ describe('folders', () => {
     expect((await call('DELETE', '/api/folders')).status).toBe(404);
   });
 });
+
+describe('favorites', () => {
+  interface Favs {
+    files: { id: string; kind: string; name: string; folder: string }[];
+    folders: { name: string; path: string; where: string }[];
+    keys: string[];
+  }
+  const favs = async (as = cookie) => (await call<Favs>('GET', '/api/favorites', undefined, as)).body;
+
+  it('are the folders and files the user marks, newest first, and forget what is deleted', async () => {
+    await call('POST', '/api/folders', { name: 'Kept' });
+    await call('POST', '/api/folders', { name: 'Inner', folder: 'Kept' });
+    const doc = (await call<{ doc: SheetMeta }>('POST', '/api/markdown', { title: 'Pinned', text: '# Pinned', folder: 'Kept' })).body.doc;
+    expect((await call('POST', '/api/favorites', { folder: 'Kept/Inner', on: true })).status).toBe(200);
+    expect((await call('POST', '/api/favorites', { kind: 'markdown', id: doc.id, on: true })).status).toBe(200);
+    // Only what is there, and only the account's own.
+    expect((await call('POST', '/api/favorites', { folder: 'Nowhere', on: true })).status).toBe(404);
+    expect((await call('POST', '/api/favorites', { kind: 'markdown', id: doc.id, on: true }, other)).status).toBe(404);
+
+    const mine = await favs();
+    expect(mine.files.map((f) => [f.kind, f.id, f.name, f.folder])).toEqual([['markdown', doc.id, 'Pinned', 'Kept']]);
+    expect(mine.folders).toEqual([{ name: 'Inner', path: 'Kept/Inner', where: 'Kept' }]);
+    expect(mine.keys).toEqual([`markdown:${doc.id}`, 'folder:Kept/Inner']);
+    expect((await favs(other)).keys).toEqual([]);
+    // An editor's star asks after one file.
+    const one = async (as = cookie) => (await call<{ on: boolean }>('GET', `/api/favorites/one?kind=markdown&id=${doc.id}`, undefined, as)).body.on;
+    expect(await one()).toBe(true);
+    expect((await call('GET', `/api/favorites/one?kind=markdown&id=${doc.id}`, undefined, other)).status).toBe(404);
+
+    // Taken off the list, or deleted: gone from it.
+    await call('POST', '/api/favorites', { folder: 'Kept/Inner', on: false });
+    expect((await favs()).folders).toEqual([]);
+    await call('POST', '/api/favorites', { kind: 'markdown', id: doc.id, on: false });
+    expect(await one()).toBe(false);
+    await call('POST', '/api/favorites', { kind: 'markdown', id: doc.id, on: true });
+    await call('DELETE', `/api/markdown/${doc.id}`);
+    expect(await favs()).toEqual({ files: [], folders: [], keys: [] });
+  });
+});
