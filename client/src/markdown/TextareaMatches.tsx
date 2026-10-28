@@ -1,10 +1,11 @@
-// The find bar's matches drawn over the Markdown textarea, which cannot highlight its own text: a layer laid exactly
-// over its text box, with the same font and wrapping, whose text is invisible but whose matches are marked, and
-// which scrolls with it. It ignores the mouse, so the textarea is used as ever beneath it.
+// The find bar's matches drawn over a textarea (the Markdown editor's, a text file's), which cannot highlight its own
+// text: a layer laid exactly over its text box, with the same font and wrapping, whose text is invisible but whose
+// matches are marked, and which scrolls with it (sideways too, for text that does not wrap). It ignores the mouse, so
+// the textarea is used as ever beneath it.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 
 /** The textarea's styles the layer must share for its text to fall in the same places. */
-const COPIED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'tabSize', 'textIndent', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const;
+const COPIED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'tabSize', 'textIndent', 'whiteSpace', 'overflowWrap', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const;
 
 export function TextareaMatches({ textareaRef, text, starts, length, current }: { textareaRef: RefObject<HTMLTextAreaElement | null>; text: string; starts: number[]; length: number; current: number }) {
   const layerRef = useRef<HTMLDivElement>(null);
@@ -28,7 +29,11 @@ export function TextareaMatches({ textareaRef, text, starts, length, current }: 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(ta);
-    const follow = () => layerRef.current && (layerRef.current.scrollTop = ta.scrollTop);
+    const follow = () => {
+      if (!layerRef.current) return;
+      layerRef.current.scrollTop = ta.scrollTop;
+      layerRef.current.scrollLeft = ta.scrollLeft;
+    };
     ta.addEventListener('scroll', follow);
     return () => {
       ro.disconnect();
@@ -45,9 +50,13 @@ export function TextareaMatches({ textareaRef, text, starts, length, current }: 
     if (!ta || !layer) return;
     const key = current >= 0 ? `${current}:${starts[current]}` : null;
     const mark = layer.querySelector<HTMLElement>('mark.find-current');
-    if (key !== shown.current && mark && (mark.offsetTop < ta.scrollTop || mark.offsetTop + mark.offsetHeight > ta.scrollTop + ta.clientHeight)) ta.scrollTop = Math.max(0, mark.offsetTop - ta.clientHeight / 3);
+    if (key !== shown.current && mark) {
+      if (mark.offsetTop < ta.scrollTop || mark.offsetTop + mark.offsetHeight > ta.scrollTop + ta.clientHeight) ta.scrollTop = Math.max(0, mark.offsetTop - ta.clientHeight / 3);
+      if (mark.offsetLeft < ta.scrollLeft || mark.offsetLeft + mark.offsetWidth > ta.scrollLeft + ta.clientWidth) ta.scrollLeft = Math.max(0, mark.offsetLeft - ta.clientWidth / 3);
+    }
     shown.current = key;
     layer.scrollTop = ta.scrollTop;
+    layer.scrollLeft = ta.scrollLeft;
   });
 
   if (!box) return null;

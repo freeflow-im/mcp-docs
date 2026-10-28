@@ -225,7 +225,7 @@ type stripping; imports use `.ts` extensions.
 - Find (⌘F) in the editors other than the spreadsheet's (`state/search.ts`, `FindBar`) is `client/src/find`: one find bar
   (`FindBox`, which `FindBar` also uses), matches in a document as ProseMirror decorations (`docFind.ts`, `DocController.find`),
   in a presentation's slides by element (`deckFind.ts`, `DeckController.find`), in Markdown over the textarea
-  (`TextareaMatches`) and in the preview, and in the JSON tree; text the page draws is highlighted with the CSS Custom
+  (`TextareaMatches`) and in the preview, in a plain text file's editor (`TextFileEditor`, the same layer), and in the JSON tree; text the page draws is highlighted with the CSS Custom
   Highlight API (`highlights.ts`). PDFs have none of their own yet (the browser's viewer).
 - A stored file that is plain text (`StoredFile.text`) is edited as text on its page (`TextFileEditor`; in the desktop app its Tail follows a growing file, a log, by asking
   `GET /api/files/:id` for the bytes past those it has, a Range request); a JSON file

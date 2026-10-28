@@ -5,9 +5,13 @@
 // In the desktop app, Tail follows a file that grows, a log say: it asks for the bytes past those it has
 // every second, adds them and keeps the end in view (unless the person scrolled up); a file that shrank, or was
 // replaced, is read again from the start. The text is read-only meanwhile.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+// Find (⌘F) marks the matches over the text, as in the Markdown editor; closing it selects the one shown.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { StoredFile } from '../../../shared/types.ts';
 import { api } from '../api.ts';
+import { FindBox, FindToggle } from '../find/FindBox.tsx';
+import { findAll, stepIndex, useFind } from '../find/find.ts';
+import { TextareaMatches } from '../markdown/TextareaMatches.tsx';
 
 const BOM = '﻿';
 const TAIL_EVERY_MS = 1000;
@@ -120,6 +124,29 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
     if (tail && el && atEnd.current) el.scrollTop = el.scrollHeight;
   }, [tail, text]);
 
+  const finder = useFind(text !== null);
+  const find = finder.find;
+  const starts = useMemo(() => (find && text !== null ? findAll(text, find.query, find.matchCase) : []), [find, text]);
+  const current = find && find.current < starts.length ? find.current : -1;
+  const searchFor = (patch: { query?: string; matchCase?: boolean }) => {
+    if (!find || text === null) return;
+    const next = { ...find, ...patch };
+    const hits = findAll(text, next.query, next.matchCase);
+    // The first match at or after the cursor.
+    const from = area.current?.selectionStart ?? 0;
+    const at = hits.findIndex((h) => h >= from);
+    finder.set({ ...patch, current: hits.length ? (at < 0 ? 0 : at) : -1 });
+  };
+  const closeFind = () => {
+    const ta = area.current;
+    const at = current >= 0 ? starts[current] : -1;
+    finder.close();
+    if (!ta) return;
+    // The match shown is selected, ready to type over.
+    ta.focus();
+    if (at >= 0 && find) ta.setSelectionRange(at, at + find.query.length);
+  };
+
   const save = async () => {
     if (text === null || !dirty || state === 'saving') return;
     setState('saving');
@@ -174,26 +201,46 @@ export function TextFileEditor({ file, onSaved, canTail = false }: { file: Store
       {text === null ? (
         !error && <div className="muted text-file-wait">Loading…</div>
       ) : (
-        <textarea
-          ref={area}
-          className="md-editor text-file-editor"
-          value={text}
-          readOnly={tail}
-          onChange={(e) => (setText(e.target.value), state === 'saved' && setState('idle'))}
-          spellCheck={false}
-          autoFocus
-          aria-label={file.filename}
-          onKeyDown={(e) => {
-            // Tab types a tab, as in any text editor.
-            if (e.key !== 'Tab' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
-            e.preventDefault();
-            const el = e.currentTarget;
-            const { selectionStart: a, selectionEnd: b } = el;
-            const next = `${el.value.slice(0, a)}\t${el.value.slice(b)}`;
-            setText(next);
-            requestAnimationFrame(() => el.setSelectionRange(a + 1, a + 1));
-          }}
-        />
+        <div className="text-file-body">
+          <textarea
+            ref={area}
+            className="md-editor text-file-editor"
+            value={text}
+            readOnly={tail}
+            onChange={(e) => (setText(e.target.value), state === 'saved' && setState('idle'))}
+            spellCheck={false}
+            autoFocus
+            aria-label={file.filename}
+            onKeyDown={(e) => {
+              // Tab types a tab, as in any text editor.
+              if (e.key !== 'Tab' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+              e.preventDefault();
+              const el = e.currentTarget;
+              const { selectionStart: a, selectionEnd: b } = el;
+              const next = `${el.value.slice(0, a)}\t${el.value.slice(b)}`;
+              setText(next);
+              requestAnimationFrame(() => el.setSelectionRange(a + 1, a + 1));
+            }}
+          />
+          {find?.query && <TextareaMatches textareaRef={area} text={text} starts={starts} length={find.query.length} current={current} />}
+          {find && (
+            <FindBox
+              query={find.query}
+              onQuery={(query) => searchFor({ query })}
+              count={starts.length}
+              current={current}
+              onStep={(dir) => finder.set({ current: stepIndex(current, starts.length, dir) })}
+              onClose={closeFind}
+              focusSeq={find.focusSeq}
+              placeholder="Find in text"
+              label="Find in file"
+            >
+              <FindToggle on={find.matchCase} title="Match case" onClick={() => searchFor({ matchCase: !find.matchCase })}>
+                Aa
+              </FindToggle>
+            </FindBox>
+          )}
+        </div>
       )}
     </div>
   );
