@@ -91,6 +91,14 @@ describe('folders', () => {
     expect(byName.docs.map((d) => [d.title, d.folder])).toEqual([['Notes', 'Reports/2026']]);
     const pdf = (await call<Library>('GET', '/api/library/search?q=scan')).body;
     expect(pdf.files.map((f) => [f.filename, f.folder])).toEqual([['scan.pdf', 'Reports']]);
+    // Text with a slash is the end of a path: the folder's name (or its end) and then the file's.
+    const byPath = async (q: string) => (await call<Library>('GET', '/api/library/search?q=' + encodeURIComponent(q))).body;
+    expect((await byPath('reports/SCAN')).files.map((f) => f.filename)).toEqual(['scan.pdf']);
+    expect((await byPath('2026/notes')).docs.map((d) => d.title)).toEqual(['Notes']);
+    expect((await byPath('ports/scan')).files.map((f) => f.filename)).toEqual(['scan.pdf']);
+    expect((await byPath('/ports/scan')).files).toEqual([]);
+    expect((await byPath('2026/scan')).files).toEqual([]);
+    expect((await byPath('Reports/20')).folders).toEqual([{ name: '2026', path: 'Reports/2026' }]);
     // Text is matched as written, not as a pattern, and only in the account's own files.
     expect((await call<Library>('GET', '/api/library/search?q=%25')).body.docs).toEqual([]);
     expect((await call<Library>('GET', '/api/library/search?q=notes', undefined, other)).body.docs).toEqual([]);

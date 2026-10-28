@@ -63,7 +63,8 @@ export function listable(file: string, exts: ReadonlySet<string>, home = homedir
   return !parts.some((p) => p.startsWith('.') || p === 'node_modules');
 }
 
-const whereOf = (file: string, home: string): string => {
+/** The folder a file is in, as Recents shows it: the home directory written "~". */
+export const whereOf = (file: string, home: string): string => {
   const dir = path.dirname(file);
   const rel = path.relative(home, dir);
   return rel === '' ? '~' : rel.startsWith('..') ? dir : `~/${rel}`;

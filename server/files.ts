@@ -149,10 +149,11 @@ export class FileStore {
     return rows.map((r) => this.meta(r));
   }
 
-  /** The user's files, in any folder, whose name contains the text; most recent first. */
+  /** The user's files, in any folder, whose name contains the text (or whose path ends as it does: `nameSearch`); most recent first. */
   async search(ownerId: string, text: string, limit = 200): Promise<StoredFile[]> {
+    const name = text.includes('/') ? `'/' || CASE folder WHEN '' THEN '' ELSE folder || '/' END || filename` : 'filename';
     const rows = this.db
-      .prepare('SELECT id, filename, folder, type, size, created_at FROM stored_files WHERE owner_id = ? AND instr(lower(filename), lower(?)) > 0 ORDER BY created_at DESC LIMIT ?')
+      .prepare(`SELECT id, filename, folder, type, size, created_at FROM stored_files WHERE owner_id = ? AND instr(lower(${name}), lower(?)) > 0 ORDER BY created_at DESC LIMIT ?`)
       .all(ownerId, text, limit) as unknown as StoredFileRow[];
     return rows.map((r) => this.meta(r));
   }

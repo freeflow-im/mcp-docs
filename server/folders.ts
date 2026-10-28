@@ -1,7 +1,7 @@
 // The folders of a user's library (shared/folders.ts). On the server they are rows: a folder exists once
 // it is created, and files point at it by path. The desktop app's folders are directories instead
 // (LocalFolders in server/localStore.ts).
-import { folderName, parentFolder } from '../shared/folders.ts';
+import { nameSearch, parentFolder } from '../shared/folders.ts';
 import type { DB } from './db.ts';
 
 export interface Folders {
@@ -40,11 +40,11 @@ export class FolderStore implements Folders {
   }
 
   async search(ownerId: string, text: string): Promise<string[]> {
-    const q = text.toLowerCase();
+    const search = nameSearch(text);
     const rows = this.db.prepare('SELECT path FROM folders WHERE owner_id = ?').all(ownerId) as { path: string }[];
     return rows
       .map((r) => r.path)
-      .filter((p) => folderName(p).toLowerCase().includes(q))
+      .filter((p) => search.matches(p))
       .sort(byName)
       .slice(0, SEARCH_LIMIT);
   }

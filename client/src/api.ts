@@ -146,6 +146,8 @@ export const api = {
   preview: (id: string) => request<{ preview: FilePreview }>('GET', `/api/library/preview/${encodeURIComponent(id)}`),
   /** Folders, documents and stored files whose name contains the text, in every folder. */
   searchLibrary: (q: string) => request<{ folders: FolderInfo[]; docs: SheetMeta[]; files: StoredFile[]; truncated: boolean }>('GET', `/api/library/search?q=${encodeURIComponent(q)}`),
+  /** The desktop app: files by name anywhere in the home folder outside the open one, by their paths. */
+  searchHome: (q: string) => request<{ files: { path: string; name: string; where: string; kind: RecentFile['kind'] }[]; truncated: boolean }>('GET', `/api/local/search?q=${encodeURIComponent(q)}`),
   createFolder: (parent: string, name: string) => request<{ folder: FolderInfo }>('POST', '/api/folders', { name, folder: parent || undefined }),
   /** Delete an empty folder. */
   deleteFolder: (path: string) => request<{ ok: true }>('DELETE', `/api/folders${inFolder(path, true)}`),

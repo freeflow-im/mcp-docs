@@ -230,6 +230,12 @@ describe('a mounted folder', () => {
     // A result opens like any other file.
     expect((await call<{ doc: { text: string } }>('GET', `/api/markdown/${found.docs[0].id}`)).body.doc.text).toBe('plan');
     expect((await call<Library>('GET', '/api/library/search?q=still')).body.folders).toEqual([{ name: 'still', path: 'deep/er/still' }]);
+    // Text with a slash is the end of a path.
+    const byPath = async (q: string) => (await call<Library>('GET', '/api/library/search?q=' + encodeURIComponent(q))).body;
+    expect((await byPath('er/quarterly')).files.map((f) => [f.filename, f.folder])).toEqual([['quarterly.pdf', 'deep/er']]);
+    expect((await byPath('still/QUARTER')).docs.map((d) => d.title)).toEqual(['Quarterly plan.md']);
+    expect((await byPath('eep/quarterly')).files.map((f) => f.filename)).toEqual(['quarterly.py']);
+    expect((await byPath('/eep/quarterly')).files).toEqual([]);
     // Finding some files did not make the app forget the others.
     expect((await library('reports')).docs.length).toBeGreaterThan(0);
   });
@@ -260,6 +266,13 @@ describe('a mounted folder', () => {
       // A folder the index does not cover, or an index that fails, is walked.
       answer = () => null;
       expect((await search('unindexed')).docs.map((d) => d.title)).toEqual(['unindexed budget.md']);
+      // The end of a path: the index is asked for the name, and its answer held to the path.
+      answer = (root) => ['a/Budget stuff/budget 2026.md', 'budget.pdf'].map((p) => path.join(root, p));
+      asked.length = 0;
+      const byPath = await search(encodeURIComponent('stuff/budget'));
+      expect(asked).toEqual(['budget']);
+      expect(byPath.docs.map((d) => d.title)).toEqual(['budget 2026.md']);
+      expect(byPath.files).toEqual([]);
       answer = () => {
         throw new Error('mdfind failed');
       };
@@ -267,6 +280,29 @@ describe('a mounted folder', () => {
     } finally {
       await indexed.close();
       rmSync(dir, { recursive: true, force: true });
+      rmSync(data, { recursive: true, force: true });
+    }
+  });
+
+  it('finds files elsewhere in the home folder by name or the end of their path, outside the open folder', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'sheetsweb-home-'));
+    const data = mkdtempSync(path.join(tmpdir(), 'sheetsweb-localdata-'));
+    const inHome = (...parts: string[]) => path.join(home, ...parts);
+    for (const d of [['src', 'btdash'], ['src', 'site'], ['Downloads'], ['Library', 'Caches'], ['open']]) mkdirSync(inHome(...d), { recursive: true });
+    for (const f of [['src', 'btdash', 'docker-compose.yaml'], ['src', 'site', 'docker-compose.yaml'], ['Downloads', 'docker-compose.yaml'], ['Library', 'Caches', 'docker-compose.yaml'], ['open', 'docker-compose.yaml']]) writeFileSync(inHome(...f), 'x');
+    const realHome = process.env.HOME;
+    process.env.HOME = home; // os.homedir()
+    const app = await buildApp({ dataDir: data, local: { dir: inHome('open'), recents: null, findByName: null } });
+    const search = async (q: string) => (await app.inject({ method: 'GET', url: `/api/local/search?q=${encodeURIComponent(q)}` })).json() as { files: { path: string; where: string; kind: string }[] };
+    try {
+      // The open folder's own file is the library search's; the system's Library is left out.
+      expect((await search('docker-compose')).files.map((f) => f.where).sort()).toEqual(['~/Downloads', '~/src/btdash', '~/src/site']);
+      const one = (await search('btdash/docker-compose.yaml')).files;
+      expect(one).toEqual([{ path: inHome('src', 'btdash', 'docker-compose.yaml'), name: 'docker-compose.yaml', where: '~/src/btdash', kind: 'file' }]);
+    } finally {
+      await app.close();
+      process.env.HOME = realHome;
+      rmSync(home, { recursive: true, force: true });
       rmSync(data, { recursive: true, force: true });
     }
   });

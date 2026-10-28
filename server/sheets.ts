@@ -218,10 +218,11 @@ export class SheetStore {
     return rows.map(toMeta);
   }
 
-  /** Documents of every kind, in any folder, whose title contains the text; most recently edited first. */
+  /** Documents of every kind, in any folder, whose title contains the text (or whose path ends as it does: `nameSearch`); most recently edited first. */
   async search(ownerId: string, text: string, limit = 200): Promise<SheetMeta[]> {
+    const name = text.includes('/') ? `'/' || CASE s.folder WHEN '' THEN '' ELSE s.folder || '/' END || s.title` : 's.title';
     const rows = this.db
-      .prepare(`${SELECT_SHEETS} WHERE s.owner_id = ? AND instr(lower(s.title), lower(?)) > 0 ORDER BY s.updated_at DESC LIMIT ?`)
+      .prepare(`${SELECT_SHEETS} WHERE s.owner_id = ? AND instr(lower(${name}), lower(?)) > 0 ORDER BY s.updated_at DESC LIMIT ?`)
       .all(ownerId, text, limit) as unknown as SheetRow[];
     return rows.map(toMeta);
   }

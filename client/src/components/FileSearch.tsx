@@ -1,5 +1,7 @@
-// Finding a file from an editor: the search button in the header opens a dialog that looks for files by name in
-// every folder (`/api/library/search`, as the file list's search does), and before anything is typed lists the
+// Finding a file from an editor or the home page: the search button in the header opens a dialog that looks for
+// files by name in every folder (`/api/library/search`, as the file list's search does; text with a slash is the
+// end of a path, `backend/.env`); in the desktop app it then looks through the whole home folder too, `/api/local/search`, and
+// lists what it finds outside the open folder after the rest, opened as Open file by path… opens them), and before anything is typed lists the
 // files last opened in the app (its own Recents, `/api/recents`, not the system's). Clicking a file, or Enter,
 // opens it here; its Open button, or ⌘/Ctrl+Enter, opens it in a new tab. ⌘P (Ctrl+P), as in VS Code, opens the
 // dialog too, instead of the browser's Print.
@@ -7,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SheetMeta, StoredFile } from '../../../shared/types.ts';
 import { api, type RecentFile } from '../api.ts';
+import { useAuth } from '../auth.tsx';
 import { openFromRecents } from '../pages/OpenLocalFile.tsx';
 import { kindIcon, type LibraryItem } from './FileLibrary.tsx';
 import { Modal } from './Modal.tsx';
@@ -51,7 +54,10 @@ export function FileSearchButton() {
 export function FileSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
+  const { local } = useAuth();
   const [found, setFound] = useState<{ q: string; rows: Row[]; truncated: boolean } | null>(null);
+  // The desktop app: what the home folder has outside the open folder (slower: shown when it comes).
+  const [home, setHome] = useState<{ q: string; rows: Row[] } | null>(null);
   const [recent, setRecent] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState(0);
@@ -89,6 +95,19 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
     };
   };
 
+  // A file elsewhere in the home folder opens as Open file by path… opens one: the window moves to its folder, or a
+  // new tab opens on it.
+  const homeRow = (f: { path: string; name: string; where: string; kind: RecentFile['kind'] }): Row => ({
+    key: f.path,
+    item: { kind: f.kind, title: f.name },
+    where: f.where,
+    open: async () => {
+      const res = await api.openLocalPath(f.path);
+      if (res.file !== undefined) go(openFromRecents(res.file));
+    },
+    openInTab: async () => void (await api.openLocalPath(f.path, true)),
+  });
+
   useEffect(() => {
     api.recents().then(
       (r) => setRecent(r.files.map(recentRow)),
@@ -100,9 +119,15 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const text = q.trim();
     setAt(0);
+    setHome(null);
     if (!text) return setFound(null);
     let live = true;
     const timer = setTimeout(() => {
+      if (local)
+        api.searchHome(text).then(
+          (r) => live && setHome({ q: text, rows: r.files.map(homeRow) }),
+          () => live && setHome({ q: text, rows: [] }),
+        );
       api.searchLibrary(text).then(
         (r) => {
           if (!live) return;
@@ -124,7 +149,8 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
   }, [q]);
 
   const searching = !!q.trim();
-  const rows = (searching ? found?.rows : recent) ?? [];
+  const homeDone = !local || !!home;
+  const rows = (searching ? found && [...found.rows, ...(home?.rows ?? [])] : recent) ?? [];
   const act = (fn: () => Promise<void> | void) => {
     setError(null);
     Promise.resolve()
@@ -142,7 +168,7 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
         className="file-search-input"
         autoFocus
         value={q}
-        placeholder="Type part of a file's name"
+        placeholder="Type part of a file's name, or folder/name"
         aria-label="File name"
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
@@ -156,10 +182,10 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
         }}
       />
       {error && <div className="form-error">{error}</div>}
-      {searching && !found ? (
+      {searching && (!found || (!rows.length && !homeDone)) ? (
         <p className="muted file-search-note">Looking…</p>
       ) : searching && !rows.length ? (
-        <p className="muted file-search-note">No file’s name has “{found!.q}” in it.</p>
+        <p className="muted file-search-note">{found!.q.includes('/') ? `No file’s path has “${found!.q}” in it.` : `No file’s name has “${found!.q}” in it.`}</p>
       ) : !searching && !recent ? null : !searching && !rows.length ? (
         <p className="muted file-search-note">Type to look in every folder. The files you open will be listed here.</p>
       ) : (
@@ -184,6 +210,7 @@ export function FileSearch({ onClose }: { onClose: () => void }) {
               </li>
             ))}
             {searching && found?.truncated && <li className="muted file-search-more">More files match: type more of the name.</li>}
+            {searching && !homeDone && <li className="muted file-search-more">Looking in your home folder…</li>}
           </ul>
         </>
       )}

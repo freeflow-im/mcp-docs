@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { newCsvDoc, type CsvDoc } from '../shared/csv.ts';
 import { newMarkdownDoc, type MarkdownDoc } from '../shared/markdown.ts';
-import { joinFolder, parentFolder } from '../shared/folders.ts';
+import { joinFolder, nameSearch, parentFolder } from '../shared/folders.ts';
 import type { Deck } from '../shared/deck.ts';
 import type { Doc } from '../shared/doc.ts';
 import { docxProblem } from '../shared/docxFormat.ts';
@@ -86,6 +86,8 @@ const titleOf = (rel: string) => path.posix.basename(rel);
 /** The name without the extension, for the title inside an Office file. */
 const baseOf = (rel: string) => path.posix.basename(rel, path.extname(rel));
 
+type NameSearch = ReturnType<typeof nameSearch>;
+
 interface Found {
   /** Path relative to the mounted folder, with forward slashes. */
   rel: string;
@@ -152,15 +154,18 @@ export class LocalFolder {
   readonly root: string;
   private trashDir: string;
   private index: FindByName | null;
+  private findBudgetMs: number;
 
   /**
    * `trashDir` is where deleted files are moved (outside the folder), so a delete can be taken back by hand.
-   * `index` is asked by a search before it walks the tree (Spotlight on macOS).
+   * `index` is asked by a search before it walks the tree (Spotlight on macOS); `findBudgetMs` is how long a
+   * search may walk it instead.
    */
-  constructor(root: string, trashDir: string, index: FindByName | null = null) {
+  constructor(root: string, trashDir: string, index: FindByName | null = null, findBudgetMs = FIND_BUDGET_MS) {
     this.root = path.resolve(root);
     this.trashDir = trashDir;
     this.index = index;
+    this.findBudgetMs = findBudgetMs;
   }
 
   /**
@@ -225,7 +230,8 @@ export class LocalFolder {
   private lastFind: { text: string; at: number; result: Promise<{ files: Found[]; dirs: string[]; truncated: boolean }> } | null = null;
 
   /**
-   * Listed files and folders, anywhere under the mounted folder, whose name contains the text. The tree is
+   * Listed files and folders, anywhere under the mounted folder, whose name contains the text (or whose path ends
+   * as it does, for text with a slash: `nameSearch`). The tree is
    * walked level by level, so what is near the top is found first, and without holding up other requests;
    * `truncated` says the walk stopped early (enough results, or out of time on a very large tree). One
    * search asks for documents, files and folders in turn, so a walk is shared for a moment. An index
@@ -234,8 +240,8 @@ export class LocalFolder {
   find(text: string): Promise<{ files: Found[]; dirs: string[]; truncated: boolean }> {
     // Shared while it runs and for a moment after it finishes.
     if (this.lastFind && this.lastFind.text === text && Date.now() - this.lastFind.at < 2000) return this.lastFind.result;
-    const q = text.toLowerCase();
-    const result = this.lookUp(text, q).then((r) => r ?? this.walkFor(q));
+    const search = nameSearch(text);
+    const result = this.lookUp(search).then((r) => r ?? this.walkFor(search));
     const entry = { text, at: Infinity, result };
     this.lastFind = entry;
     void result.finally(() => (entry.at = Date.now()));
@@ -243,13 +249,15 @@ export class LocalFolder {
   }
 
   /**
-   * The index's answer, held to what the walk would find: names containing the text whatever their case,
-   * nearest the top first, nothing in or under a folder the walk skips; null when there is no index for the folder.
+   * The index's answer, held to what the walk would find: names containing the text whatever their case (paths
+   * ending as it does: the index is asked for the name), nearest the top first, nothing in or under a folder the
+   * walk skips; null when there is no index for the folder, or the name is a hidden file's.
    */
-  private async lookUp(text: string, q: string): Promise<{ files: Found[]; dirs: string[]; truncated: boolean } | null> {
+  private async lookUp(search: NameSearch): Promise<{ files: Found[]; dirs: string[]; truncated: boolean } | null> {
     let paths: string[] | null;
     try {
-      paths = this.index && (await this.index(this.root, text));
+      // Spotlight leaves hidden files (.env) out, so a name that starts with a dot is walked for.
+      paths = this.index && search.name && !search.name.startsWith('.') ? await this.index(this.root, search.name) : null;
     } catch {
       paths = null; // Not answering, or too slow: walk instead.
     }
@@ -257,7 +265,7 @@ export class LocalFolder {
     const rels = paths
       .map((p) => path.relative(this.root, p).split(path.sep))
       .filter((parts) => parts[0] && parts[0] !== '..' && !path.isAbsolute(parts[0]))
-      .filter((parts) => parts.at(-1)!.toLowerCase().includes(q) && !SYSTEM_FILES.has(parts.at(-1)!))
+      .filter((parts) => search.matches(parts.join('/')) && !SYSTEM_FILES.has(parts.at(-1)!))
       .filter((parts) => !parts.some((p, i) => SKIP_DIRS.has(p) || this.skipInWalk(parts.slice(0, i + 1).join('/'))))
       .map((parts) => ({ rel: parts.join('/'), depth: parts.length }))
       .sort((a, b) => a.depth - b.depth || byName(a.rel, b.rel));
@@ -276,10 +284,10 @@ export class LocalFolder {
     return { files, dirs, truncated: false };
   }
 
-  private async walkFor(q: string): Promise<{ files: Found[]; dirs: string[]; truncated: boolean }> {
+  private async walkFor(search: NameSearch): Promise<{ files: Found[]; dirs: string[]; truncated: boolean }> {
     const files: Found[] = [];
     const dirs: string[] = [];
-    const deadline = Date.now() + FIND_BUDGET_MS;
+    const deadline = Date.now() + this.findBudgetMs;
     let level = [''];
     // However deep the tree goes; the time allowed is what bounds the walk.
     for (let depth = 0; level.length && depth <= 40; depth++) {
@@ -295,7 +303,7 @@ export class LocalFolder {
         for (const e of entries) {
           if (SYSTEM_FILES.has(e.name)) continue;
           const rel = joinFolder(folder, e.name);
-          const hit = e.name.toLowerCase().includes(q);
+          const hit = search.matches(rel);
           if (e.isDirectory()) {
             if (SKIP_DIRS.has(e.name) || this.skipInWalk(rel)) continue;
             next.push(rel);

@@ -32,6 +32,22 @@ export const joinFolder = (parent: string, name: string): string => (parent ? `$
 export const folderName = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 export const parentFolder = (path: string): string => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
 
+/**
+ * What a search by name looks for. Text with a slash in it is the end of a path, matched against the folder and the
+ * name: `backend/.env` finds a .env (or .env.local) in any folder named backend, `/backend/.env` one whose folder's
+ * name starts there too. Other text is part of a name. Neither minds case.
+ */
+export function nameSearch(text: string): { name: string; inPath: boolean; matches(path: string): boolean } {
+  const q = text.toLowerCase();
+  const inPath = q.includes('/');
+  return {
+    // The part of the text that is in the name itself, for a search that only knows names.
+    name: text.slice(text.lastIndexOf('/') + 1),
+    inPath,
+    matches: (path) => (inPath ? `/${path.toLowerCase()}`.includes(q) : folderName(path).toLowerCase().includes(q)),
+  };
+}
+
 /** The folders from the top down to this one, for breadcrumbs. */
 export function folderTrail(path: string): { name: string; path: string }[] {
   const out: { name: string; path: string }[] = [];

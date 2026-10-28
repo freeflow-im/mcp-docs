@@ -47,7 +47,7 @@ import { deckPreview, docPreview, markdownPreview, sheetPreview, type FilePrevie
 import { cleanFolderName, cleanFolderPath, folderName, joinFolder, parentFolder } from '../shared/folders.ts';
 import { FolderStore, type Folders } from './folders.ts';
 import { LISTED_EXTS, listedKind, LocalFileStore, LocalFolder, LocalFolders, LocalSheetStore, type FindByName } from './localStore.ts';
-import { openedFiles, recentFiles, RecentOpens, recentsAvailable, type Recents } from './recents.ts';
+import { openedFiles, recentFiles, RecentOpens, recentsAvailable, whereOf, type Recents } from './recents.ts';
 import { googleFromEnv, GoogleLogin, GoogleLoginError, GOOGLE_STATE_TTL_MS, type GoogleOptions } from './googleAuth.ts';
 import { mountPlugin } from '../plugin/server/mount.ts';
 import { ToolError } from '../plugin/server/files.ts';
@@ -77,6 +77,9 @@ export { scratchPadName };
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+/** How long a search of the home folder may walk it when Spotlight cannot answer, and how many files it lists. */
+const HOME_FIND_BUDGET_MS = 5_000;
+const HOME_SEARCH_LIMIT = 50;
 const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
 const MAX_STORED_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -234,6 +237,8 @@ export async function buildApp(opts: AppOptions) {
     return false;
   };
   const folder = opts.local ? new LocalFolder(opts.local.dir, path.join(opts.dataDir, 'trash'), opts.local.findByName) : null;
+  // The desktop app's Find a file looks through the whole home folder too: Spotlight's answer, or a short walk where there is none.
+  const homeFolder = opts.local ? new LocalFolder(homedir(), path.join(opts.dataDir, 'trash'), opts.local.findByName, HOME_FIND_BUDGET_MS) : null;
   const sheets = folder ? new LocalSheetStore(db, folder, opts.dataDir) : new SheetStore(db, path.join(opts.dataDir, 'sheets'));
   await sheets.init();
   /**
@@ -1463,6 +1468,24 @@ export async function buildApp(opts: AppOptions) {
         // Set when a very large folder could not be searched to the end.
         truncated: folder ? (await folder.find(q)).truncated : false,
       };
+    });
+
+    // The desktop app: files by name (or the end of their path) anywhere in the home folder but the open folder,
+    // which /api/library/search covers; named by their absolute paths, as Recents' are, and opened as they are.
+    r.get('/api/local/search', async (req, reply) => {
+      const q = String((req.query as { q?: unknown }).q ?? '').trim().slice(0, 200);
+      if (!folder || !homeFolder) return reply.code(400).send({ error: 'There is no open folder.' });
+      if (!q) return reply.code(400).send({ error: 'Say what to look for.' });
+      const found = await homeFolder.find(q);
+      const files = found.files
+        .map((f) => homeFolder.abs(f.rel))
+        .filter((file) => {
+          const rel = path.relative(folder.root, file);
+          return rel.startsWith('..') || path.isAbsolute(rel);
+        })
+        .slice(0, HOME_SEARCH_LIMIT)
+        .map((file) => ({ path: file, name: path.basename(file), where: whereOf(file, homeFolder.root), kind: listedKind(file) }));
+      return { files, truncated: found.truncated || found.files.length > HOME_SEARCH_LIMIT };
     });
 
     // --- Recents: the files the user last opened in the app, then (desktop app) on this machine ------

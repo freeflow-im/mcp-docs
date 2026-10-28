@@ -6,6 +6,7 @@ import { useAgent } from '../agent/AgentProvider.tsx';
 import { api, type FolderInfo, type RecentFile } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { Account } from '../components/Account.tsx';
+import { FileSearchButton } from '../components/FileSearch.tsx';
 import { FileLibrary, formatWhen, kindIcon, type LibraryItem } from '../components/FileLibrary.tsx';
 import { FileThumb } from '../components/FileThumb.tsx';
 import { HomeIcon } from '../components/Logo.tsx';
@@ -453,6 +454,8 @@ function FileList() {
       folderActions={local ? (path) => [{ label: `Open in ${fileBrowserName()}`, onClick: () => void api.revealLocal({ folder: path }).catch((e: Error) => setError(e.message)) }] : undefined}
       headerActions={
         <>
+          {/* Find a file (⌘P) in every folder, as in the editors; the search box beside it filters this list. */}
+          <FileSearchButton />
           <div className="home-more" ref={moreRef}>
             <button className="btn home-more-btn" aria-label="More" aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
               ⋯
