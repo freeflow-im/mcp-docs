@@ -290,18 +290,20 @@ describe('a mounted folder', () => {
     const inHome = (...parts: string[]) => path.join(home, ...parts);
     for (const d of [['src', 'btdash'], ['src', 'site'], ['Downloads'], ['Library', 'Caches'], ['open']]) mkdirSync(inHome(...d), { recursive: true });
     for (const f of [['src', 'btdash', 'docker-compose.yaml'], ['src', 'site', 'docker-compose.yaml'], ['Downloads', 'docker-compose.yaml'], ['Library', 'Caches', 'docker-compose.yaml'], ['open', 'docker-compose.yaml']]) writeFileSync(inHome(...f), 'x');
-    const realHome = process.env.HOME;
-    process.env.HOME = home; // os.homedir()
+    const realHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = process.env.USERPROFILE = home; // os.homedir(), USERPROFILE on Windows
     const app = await buildApp({ dataDir: data, local: { dir: inHome('open'), recents: null, findByName: null } });
-    const search = async (q: string) => (await app.inject({ method: 'GET', url: `/api/local/search?q=${encodeURIComponent(q)}` })).json() as { files: { path: string; where: string; kind: string }[] };
+    const search = async (q: string) => (await app.inject({ method: 'GET', url: `/api/local/search?q=${encodeURIComponent(q)}` })).json() as { files: { path: string; name: string; where: string; kind: string }[] };
+    const where = (f: { where: string }) => f.where.replace(/\\/g, '/');
     try {
       // The open folder's own file is the library search's; the system's Library is left out.
-      expect((await search('docker-compose')).files.map((f) => f.where).sort()).toEqual(['~/Downloads', '~/src/btdash', '~/src/site']);
+      expect((await search('docker-compose')).files.map(where).sort()).toEqual(['~/Downloads', '~/src/btdash', '~/src/site']);
       const one = (await search('btdash/docker-compose.yaml')).files;
-      expect(one).toEqual([{ path: inHome('src', 'btdash', 'docker-compose.yaml'), name: 'docker-compose.yaml', where: '~/src/btdash', kind: 'file' }]);
+      expect(one.map((f) => [f.path, f.name, where(f), f.kind])).toEqual([[inHome('src', 'btdash', 'docker-compose.yaml'), 'docker-compose.yaml', '~/src/btdash', 'file']]);
     } finally {
       await app.close();
-      process.env.HOME = realHome;
+      for (const [k, v] of Object.entries(realHome)) if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
       rmSync(home, { recursive: true, force: true });
       rmSync(data, { recursive: true, force: true });
     }
