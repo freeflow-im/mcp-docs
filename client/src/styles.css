@@ -2174,6 +2174,34 @@ button.agent-tool-label:hover {
 .connector-form {
   max-width: 460px;
 }
+.try-it {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 460px;
+  margin-top: 28px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.try-it label {
+  font-weight: 600;
+}
+.try-it-row {
+  display: flex;
+  gap: 8px;
+}
+.try-it-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+.try-it .field-hint {
+  margin-top: 0;
+}
 .settings-form {
   display: flex;
   flex-direction: column;
@@ -2227,6 +2255,10 @@ button.agent-tool-label:hover {
 }
 .mcp-address {
   margin-bottom: 28px;
+}
+.mcp-address .field-hint {
+  display: block;
+  margin-top: 8px;
 }
 .mcp-address-row {
   display: flex;
@@ -4284,6 +4316,31 @@ button.agent-tool-label:hover {
 }
 .signature-dialog {
   width: min(560px, calc(100vw - 32px));
+}
+.settings-tabs {
+  max-width: 820px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+.settings-tab-list {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab {
+  border: 0;
+  background: none;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+.settings-tab.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
 }
 .signature-tabs {
   display: flex;

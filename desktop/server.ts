@@ -5,7 +5,8 @@
 import '../server/env.ts';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { buildApp } from '../server/app.ts';
+import { randomBytes } from 'node:crypto';
+import { buildApp, type LocalAgents } from '../server/app.ts';
 import { spotlightFind } from '../server/localStore.ts';
 import { ElectronRenderer, type PdfAnswer } from '../server/pdf.ts';
 import { WebBridge, type WebAnswer } from '../server/webCopy.ts';
@@ -28,6 +29,18 @@ if (pdf) process.on('message', (msg: Partial<PdfAnswer> | null) => typeof msg?.p
 // Download to Folder).
 const web = send ? new WebBridge((msg) => send(msg)) : undefined;
 if (web) process.on('message', (msg: Partial<WebAnswer> | null) => typeof msg?.webDone === 'string' && web.answer(msg as WebAnswer));
+// The agents connected to the app's MCP server are main.js's (it signs them in): Settings asks it for them, and
+// to disconnect one, and waits for its answer.
+const asked = new Map<string, (answer: unknown) => void>();
+if (send) process.on('message', (msg: { agentsDone?: string; answer?: unknown } | null) => typeof msg?.agentsDone === 'string' && asked.get(msg.agentsDone)?.(msg.answer));
+const askMain = <T,>(msg: object): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const id = randomBytes(8).toString('hex');
+    const timer = setTimeout(() => (asked.delete(id), reject(new Error('The app did not answer.'))), 10_000);
+    asked.set(id, (answer) => (asked.delete(id), clearTimeout(timer), resolve(answer as T)));
+    send!({ ...msg, agents: id });
+  });
+const agents: LocalAgents | undefined = send && process.env.MCP_TOKEN ? { list: () => askMain({ list: true }), disconnect: (id) => askMain({ disconnect: id }) } : undefined;
 const app = await buildApp({
   dataDir,
   staticDir: path.join(root, 'dist', 'client'),
@@ -40,7 +53,7 @@ const app = await buildApp({
     openFileInTab: (file) => process.send?.({ openFileInTab: file }),
     openFolder: (dir, inTab = false, folder) => process.send?.({ openFolder: dir, inTab, folder }),
     chooseFolder: (inTab = false) => process.send?.({ chooseFolder: true, inTab }),
-    connectAgent: () => process.send?.({ connectAgent: true }),
+    agents,
     reveal: (target) => process.send?.({ reveal: target }),
     startDrag: (file) => process.send?.({ drag: file }),
     // A search asks Spotlight before it walks the folder.

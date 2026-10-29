@@ -134,9 +134,11 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   the open folder the window moves to that folder, as Open file by path… does, but keeps the folder it came from
   (`/open?…&backDir=&backFolder=`, `returnTo` in `client/src/listing.ts`): the editor's breadcrumbs show it, and a list
   asked for there (breadcrumbs, the logo, Home) moves the window back to it (`HomePage`, `POST /api/local/return`).
-  On the web the tile's scratch pads are the Markdown documents in the user's `Scratch pads` folder (`ScratchPadTile`), and
-  Connect your agent goes to Settings (`#agents`), which shows the hosted MCP address (`mcpUrl` from `/api/settings/agents`)
-  with Copy agent instruction.
+  On the web the tile's scratch pads are the Markdown documents in the user's `Scratch pads` folder (`ScratchPadTile`).
+  Connect your agent goes to Settings' second tab (`#agents`; Assistant is the first), which shows the MCP address (`mcpUrl`
+  from `/api/settings/agents`) and the agents connected: on the web the hosted address with Copy agent instruction; in
+  the desktop app (`local: true`) the app's own server on this computer with Copy Claude Code command, its agents and
+  whether it is running, which `desktop/server.ts` asks `main.js` for (`AppOptions.local.agents`, an `agents` message).
   The desktop app is also an MCP server for agents on the same machine (Claude Code, say), named MCP Docs
   (`mcp-docs`; the hosted one is MCP Docs too from version 2, with the id `universal-docs`): `server/localMcp.ts`
   serves the ChatGPT plugin's model tools (`plugin/server`, the newest version, no UI parts) over the open
@@ -144,7 +146,7 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   passing requests to the server of the window in front (`frontServer`) with a secret made for each run. Agents sign in
   with OAuth 2.1 (`desktop/mcpAuth.js`: registration, PKCE, refresh; the person allows each agent in a native
   dialog, not on the web page; tokens hashed in `mcp-auth.json` in the app's data folder), and File › Connect
-  an Agent (MCP)… shows the `claude mcp add` command and disconnects them. For Claude Code and Codex it is also a plugin,
+  an Agent (MCP)… opens Settings at `#agents`, which shows the `claude mcp add` command and disconnects them (`revoke`). For Claude Code and Codex it is also a plugin,
   `claude-plugin/` (the server and a skill, `skills/mcp-docs/SKILL.md`; manifests `.claude-plugin/plugin.json` and
   `.codex-plugin/plugin.json`; the marketplaces are `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
   at the root), installed with the app by `npx @freeflow-im/mcp-docs` (`installer/`, its own npm package, which asks

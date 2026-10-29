@@ -1,12 +1,15 @@
 // Settings: what the assistant runs on. The hosted app has a model of its own; a user can instead enter their
 // own Anthropic, OpenAI or OpenRouter API key and pick a model, and in the desktop app, which has no model of
-// its own, they must. Keys go to the server and are never shown again. Below that, the agents signed in to
-// the account's files with a device code, each of which can be disconnected.
+// its own, they must. Keys go to the server and are never shown again. The second tab (#agents, where home's
+// Connect your agent tile and the desktop app's File › Connect an Agent come) has the MCP address other agents
+// connect to and the agents connected, each of which can be disconnected: on the web the hosted address and the
+// agents signed in to the account; in the desktop app its own server on this computer and the agents it allowed.
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ANTHROPIC_MODELS, OPENAI_MODELS, OPENROUTER_MODELS, type AssistantProvider, type AssistantSettings, type AssistantSettingsUpdate, type KeyProvider } from '../../../shared/agent/protocol.ts';
 import type { ConnectedAgent } from '../../../shared/types.ts';
 import { AgentButton } from '../agent/AgentPanel.tsx';
+import { useAgent } from '../agent/AgentProvider.tsx';
 import { api } from '../api.ts';
 import { Account } from '../components/Account.tsx';
 import { appName } from '../brand.ts';
@@ -17,7 +20,16 @@ const PROVIDERS: { id: KeyProvider; name: string; placeholder: string; keysAt: s
   { id: 'openrouter', name: 'OpenRouter', placeholder: 'sk-or-…', keysAt: 'openrouter.ai/keys' },
 ];
 
+/** The page's tabs: the assistant's settings first, and connecting an agent at #agents. */
+const TABS = [
+  { id: 'assistant', label: 'Assistant', hash: '' },
+  { id: 'agents', label: 'Connect your agent', hash: '#agents' },
+] as const;
+
 export function SettingsPage() {
+  const { hash } = useLocation();
+  const navigate = useNavigate();
+  const tab = TABS.find((t) => t.hash === hash) ?? TABS[0];
   const [saved, setSaved] = useState<AssistantSettings | null>(null);
   const [provider, setProvider] = useState<AssistantProvider>('default');
   const [models, setModels] = useState<Record<KeyProvider, string>>({ anthropic: '', openai: '', openrouter: '' });
@@ -83,162 +95,170 @@ export function SettingsPage() {
         </div>
       </header>
 
-      <section className="home-inner changes">
-        <h2>Assistant</h2>
-        {saved && (
-          <p className="changes-intro">
-            {saved.agents ? (
-              'Choose what powers the assistant: an API key, or a coding agent you already use on this Mac.'
-            ) : saved.builtIn ? (
-              'The assistant runs on the built-in model unless you choose Anthropic, OpenAI or OpenRouter here, billed to your own API key. Keys are stored encrypted and never shown again.'
-            ) : (
-              'The assistant runs on your own Anthropic, OpenAI or OpenRouter API key, billed to that account. Keys are stored encrypted and never shown again.'
-            )}
-          </p>
-        )}
-        {saved && saved.provider === 'default' && !saved.builtIn && (
-          <div className="form-error">{saved.agents ? 'Choose what the assistant uses, an API key or a local coding agent, and save.' : 'The assistant needs an API key: choose a provider, enter your key and save.'}</div>
-        )}
-        {saved === null ? (
-          !error && <div className="page-loading">Loading…</div>
-        ) : (
-          <form
-            className="settings-form"
-            autoComplete="off"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void save(update(), 'Saved.');
-            }}
-          >
-            {saved.agents ? (
-              <>
-                <fieldset className="field run-choice">
-                  <legend>The assistant uses</legend>
-                  <label className="run-option">
-                    <input type="radio" name="runs-on" checked={provider !== 'claude-agent'} onChange={() => setProvider(keyProvider)} />
-                    <span>
-                      <strong>Use an API key</strong>
-                      <span className="field-hint">Anthropic, OpenAI or OpenRouter, with your key, billed for each use to your account there.</span>
-                    </span>
-                  </label>
-                  <label className="run-option">
-                    <input type="radio" name="runs-on" checked={provider === 'claude-agent'} onChange={() => setProvider('claude-agent')} />
-                    <span>
-                      <strong>Use a local coding agent</strong>
-                      <span className="field-hint">A coding agent installed and signed in on this Mac, on your own plan with it. No key is needed.</span>
-                    </span>
-                  </label>
-                </fieldset>
-                {provider === 'claude-agent' ? (
-                  <label className="field">
-                    <span>Agent</span>
-                    <select value="claude-agent" onChange={() => {}}>
-                      <option value="claude-agent">Claude Code</option>
-                    </select>
-                    <span className="field-hint">
-                      For each message, {appName()} starts the Claude Code installed on this Mac, signed in as you are there, in the folder open here. It has all of
-                      Claude Code’s own tools and settings, and its use counts against your Claude plan. Routine steps go ahead on their own; it asks here only when it
-                      is unsure.
-                    </span>
-                  </label>
-                ) : (
-                  <label className="field">
-                    <span>API key from</span>
-                    <select value={provider} onChange={(e) => setProvider(e.target.value as AssistantProvider)}>
-                      {PROVIDERS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="field-hint">
-                      A key already set in your environment (ANTHROPIC_API_KEY, OPENAI_API_KEY or OPENROUTER_API_KEY) is used the first time the app starts. Keys are
-                      stored encrypted and never shown again.
-                    </span>
-                  </label>
-                )}
-              </>
-            ) : (
-              <label className="field">
-                <span>The assistant runs on</span>
-                <select value={provider} onChange={(e) => setProvider(e.target.value as AssistantProvider)}>
-                  {saved.builtIn && <option value="default">Built-in model</option>}
-                  {PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}, with my API key
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {current && (
-              <>
+      <div className="home-inner settings-tabs">
+        <div className="settings-tab-list" role="tablist">
+          {TABS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={t === tab} className={`settings-tab${t === tab ? ' active' : ''}`} onClick={() => navigate({ hash: t.hash }, { replace: true })}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab.id === 'agents' ? (
+        <ConnectedAgents />
+      ) : (
+        <section className="home-inner changes">
+          {saved && (
+            <p className="changes-intro">
+              {saved.agents
+                ? 'Choose what powers the assistant: an API key, or a coding agent you already use on this Mac.'
+                : saved.builtIn
+                  ? 'The assistant runs on the built-in model unless you choose Anthropic, OpenAI or OpenRouter here, billed to your own API key. Keys are stored encrypted and never shown again.'
+                  : 'The assistant runs on your own Anthropic, OpenAI or OpenRouter API key, billed to that account. Keys are stored encrypted and never shown again.'}
+            </p>
+          )}
+          {saved && saved.provider === 'default' && !saved.builtIn && (
+            <div className="form-error">{saved.agents ? 'Choose what the assistant uses, an API key or a local coding agent, and save.' : 'The assistant needs an API key: choose a provider, enter your key and save.'}</div>
+          )}
+          {saved === null ? (
+            !error && <div className="page-loading">Loading…</div>
+          ) : (
+            <form
+              className="settings-form"
+              autoComplete="off"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save(update(), 'Saved.');
+              }}
+            >
+              {saved.agents ? (
+                <>
+                  <fieldset className="field run-choice">
+                    <legend>The assistant uses</legend>
+                    <label className="run-option">
+                      <input type="radio" name="runs-on" checked={provider !== 'claude-agent'} onChange={() => setProvider(keyProvider)} />
+                      <span>
+                        <strong>Use an API key</strong>
+                        <span className="field-hint">Anthropic, OpenAI or OpenRouter, with your key, billed for each use to your account there.</span>
+                      </span>
+                    </label>
+                    <label className="run-option">
+                      <input type="radio" name="runs-on" checked={provider === 'claude-agent'} onChange={() => setProvider('claude-agent')} />
+                      <span>
+                        <strong>Use a local coding agent</strong>
+                        <span className="field-hint">A coding agent installed and signed in on this Mac, on your own plan with it. No key is needed.</span>
+                      </span>
+                    </label>
+                  </fieldset>
+                  {provider === 'claude-agent' ? (
+                    <label className="field">
+                      <span>Agent</span>
+                      <select value="claude-agent" onChange={() => {}}>
+                        <option value="claude-agent">Claude Code</option>
+                      </select>
+                      <span className="field-hint">
+                        For each message, {appName()} starts the Claude Code installed on this Mac, signed in as you are there, in the folder open here. It has all of Claude Code’s own tools and settings, and its use counts
+                        against your Claude plan. Routine steps go ahead on their own; it asks here only when it is unsure.
+                      </span>
+                    </label>
+                  ) : (
+                    <label className="field">
+                      <span>API key from</span>
+                      <select value={provider} onChange={(e) => setProvider(e.target.value as AssistantProvider)}>
+                        {PROVIDERS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="field-hint">
+                        A key already set in your environment (ANTHROPIC_API_KEY, OPENAI_API_KEY or OPENROUTER_API_KEY) is used the first time the app starts. Keys are stored encrypted and never shown again.
+                      </span>
+                    </label>
+                  )}
+                </>
+              ) : (
                 <label className="field">
-                  <span>{current.name.replace(/ \(.*\)/, '')} API key</span>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={keys[current.id]}
-                    placeholder={savedKey(current.id) ? `Saved (${savedKey(current.id)}); leave blank to keep` : current.placeholder}
-                    onChange={(e) => setKeys({ ...keys, [current.id]: e.target.value })}
-                  />
-                  {!savedKey(current.id) && <span className="field-hint">Get one at {current.keysAt}.</span>}
+                  <span>The assistant runs on</span>
+                  <select value={provider} onChange={(e) => setProvider(e.target.value as AssistantProvider)}>
+                    {saved.builtIn && <option value="default">Built-in model</option>}
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}, with my API key
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <label className="field">
-                  <span>Model</span>
-                  {current.id === 'openrouter' ? (
-                    <>
-                      <input list="openrouter-models" value={models.openrouter} placeholder="author/model" spellCheck={false} onChange={(e) => setModels({ ...models, openrouter: e.target.value })} />
-                      <datalist id="openrouter-models">
-                        {OPENROUTER_MODELS.map((m) => (
+              )}
+              {current && (
+                <>
+                  <label className="field">
+                    <span>{current.name.replace(/ \(.*\)/, '')} API key</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={keys[current.id]}
+                      placeholder={savedKey(current.id) ? `Saved (${savedKey(current.id)}); leave blank to keep` : current.placeholder}
+                      onChange={(e) => setKeys({ ...keys, [current.id]: e.target.value })}
+                    />
+                    {!savedKey(current.id) && <span className="field-hint">Get one at {current.keysAt}.</span>}
+                  </label>
+                  <label className="field">
+                    <span>Model</span>
+                    {current.id === 'openrouter' ? (
+                      <>
+                        <input list="openrouter-models" value={models.openrouter} placeholder="author/model" spellCheck={false} onChange={(e) => setModels({ ...models, openrouter: e.target.value })} />
+                        <datalist id="openrouter-models">
+                          {OPENROUTER_MODELS.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </datalist>
+                        <span className="field-hint">Any OpenRouter model that can call tools; the list has leading ones.</span>
+                      </>
+                    ) : (
+                      <select value={models[current.id]} onChange={(e) => setModels({ ...models, [current.id]: e.target.value })}>
+                        {(current.id === 'anthropic' ? ANTHROPIC_MODELS : OPENAI_MODELS).map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name}
                           </option>
                         ))}
-                      </datalist>
-                      <span className="field-hint">Any OpenRouter model that can call tools; the list has leading ones.</span>
-                    </>
-                  ) : (
-                    <select value={models[current.id]} onChange={(e) => setModels({ ...models, [current.id]: e.target.value })}>
-                      {(current.id === 'anthropic' ? ANTHROPIC_MODELS : OPENAI_MODELS).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {modelHint && <span className="field-hint">{modelHint}</span>}
-                </label>
-              </>
-            )}
-            {error && <div className="form-error">{error}</div>}
-            {notice && <div className="connector-notice">{notice}</div>}
-            <div className="settings-actions">
-              <button type="submit" className="btn primary" disabled={busy}>
-                {busy ? 'Checking…' : 'Save'}
-              </button>
-              {current && savedKey(current.id) && (
-                <button
-                  type="button"
-                  className="btn danger"
-                  disabled={busy}
-                  onClick={() =>
-                    void save(
-                      // Removing the key in use leaves the built-in model, or (without one) no model until another key is saved.
-                      { ...update(), provider: saved.provider === current.id ? 'default' : saved.provider, [`${current.id}Key`]: null },
-                      'The key was removed.',
-                    )
-                  }
-                >
-                  Remove saved key
-                </button>
+                      </select>
+                    )}
+                    {modelHint && <span className="field-hint">{modelHint}</span>}
+                  </label>
+                </>
               )}
-            </div>
-          </form>
-        )}
-        {saved === null && error && <div className="form-error">{error}</div>}
-      </section>
-      <ConnectedAgents />
+              {error && <div className="form-error">{error}</div>}
+              {notice && <div className="connector-notice">{notice}</div>}
+              <div className="settings-actions">
+                <button type="submit" className="btn primary" disabled={busy}>
+                  {busy ? 'Checking…' : 'Save'}
+                </button>
+                {current && savedKey(current.id) && (
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={busy}
+                    onClick={() =>
+                      void save(
+                        // Removing the key in use leaves the built-in model, or (without one) no model until another key is saved.
+                        { ...update(), provider: saved.provider === current.id ? 'default' : saved.provider, [`${current.id}Key`]: null },
+                        'The key was removed.',
+                      )
+                    }
+                  >
+                    Remove saved key
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+          {saved === null && error && <div className="form-error">{error}</div>}
+          {saved && <TryIt ready={saved.provider !== 'default' || saved.builtIn} />}
+        </section>
+      )}
     </div>
   );
 }
@@ -259,11 +279,50 @@ function agentInstruction(url: string): string {
 
 const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-/** Agents signed in with a device code (mcp-remote --device-code, say). Disconnecting one revokes its tokens at once. */
+/** A prompt to try the assistant on the saved settings: it goes to the home chat, and the panel opens to show the answer. */
+function TryIt({ ready }: { ready: boolean }) {
+  const agent = useAgent();
+  const [draft, setDraft] = useState('');
+  const send = () => {
+    const text = draft.trim();
+    if (!text || agent.running) return;
+    agent.send(text);
+    agent.setOpen(true);
+    setDraft('');
+  };
+  return (
+    <form
+      className="try-it"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <label htmlFor="try-it-prompt">Try it!</label>
+      <div className="try-it-row">
+        <input id="try-it-prompt" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Which spreadsheets did I edit most recently?" disabled={!ready} autoComplete="off" />
+        <button type="submit" className="btn primary" disabled={!ready || !draft.trim() || agent.running}>
+          {agent.running ? 'Working…' : 'Send'}
+        </button>
+      </div>
+      <span className="field-hint">{ready ? 'Sends a message to the assistant with the settings saved above; the answer shows in the Assistant panel.' : 'Save a key above first.'}</span>
+    </form>
+  );
+}
+
+/** The command that adds the desktop app's MCP server at `url` to Claude Code. */
+const claudeCommand = (url: string) => `claude mcp add --scope user --transport http mcp-docs ${url}`;
+
+/**
+ * Agents signed in with a device code (mcp-remote --device-code, say), or in the desktop app those allowed to use
+ * its MCP server. Disconnecting one revokes its tokens at once.
+ */
 function ConnectedAgents() {
   const [agents, setAgents] = useState<ConnectedAgent[] | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [mcpUrl, setMcpUrl] = useState<string | null>(null);
+  // The desktop app's own server, and whether it is running (another copy of the app may hold its port).
+  const [local, setLocal] = useState<{ running: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +334,7 @@ function ConnectedAgents() {
         setEnabled(res.enabled);
         setAgents(res.agents);
         setMcpUrl(res.mcpUrl ?? null);
+        setLocal(res.local ? { running: res.running !== false } : null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -292,16 +352,11 @@ function ConnectedAgents() {
     }
   };
 
-  // Home's Connect your agent tile comes here (#agents): this section is shown once it is known to be there.
-  useEffect(() => {
-    if (enabled && window.location.hash === '#agents') document.getElementById('agents')?.scrollIntoView({ block: 'start' });
-  }, [enabled]);
-
   const copyInstruction = async () => {
     if (!mcpUrl) return;
     setError(null);
     try {
-      await navigator.clipboard.writeText(agentInstruction(mcpUrl));
+      await navigator.clipboard.writeText(local ? claudeCommand(mcpUrl) : agentInstruction(mcpUrl));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -309,36 +364,51 @@ function ConnectedAgents() {
     }
   };
 
-  if (!enabled && !error) return null;
   return (
     <section className="home-inner changes" id="agents">
+      {!enabled && !error && agents !== null && <p className="changes-empty">Agents cannot be connected here.</p>}
       {mcpUrl && (
         <div className="mcp-address">
-          <h2>MCP address</h2>
-          <p className="changes-intro">Add this address to an agent (Claude Code, Codex, Cursor and others) as a remote MCP server, and it can open, read and edit your files once you allow it.</p>
+          <p className="changes-intro">
+            {local
+              ? 'Agents on this computer (Claude Code, Codex, Cursor and others) can open, read and edit the files in the folders you open here, and the app shows what they open. Add this address to one as an MCP server; the app asks you to allow each agent that connects.'
+              : 'Add this address to an agent (Claude Code, Codex, Cursor and others) as a remote MCP server, and it can open, read and edit your files once you allow it.'}
+          </p>
+          {local && !local.running && <div className="form-error">The MCP server is not running: its port is in use, probably by another copy of the app.</div>}
           <div className="mcp-address-row">
             <code className="mcp-address-url">{mcpUrl}</code>
-            <button type="button" className="btn" onClick={() => void copyInstruction()}>
-              {copied ? 'Copied' : 'Copy agent instruction'}
+            <button type="button" className="btn" onClick={() => void copyInstruction()} title={local ? claudeCommand(mcpUrl) : undefined}>
+              {copied ? 'Copied' : local ? 'Copy Claude Code command' : 'Copy agent instruction'}
             </button>
           </div>
+          {local && (
+            <p className="field-hint">
+              Or install the mcp-docs plugin, with <code>npx @freeflow-im/mcp-docs</code>. Then run <code>/mcp</code> in Claude Code to sign in.
+            </p>
+          )}
         </div>
       )}
-      <h2>Connected agents</h2>
-      <p className="changes-intro">Agents you signed in with a device code can read and change your files. Disconnect one to stop its access right away; it would have to be signed in again.</p>
+      {enabled && <h2>Connected agents</h2>}
+      {enabled && (
+        <p className="changes-intro">
+          {local
+            ? 'Agents you allowed on this computer can read and change the files in the folders you open. Disconnect one to stop its access right away; it would have to be allowed again.'
+            : 'Agents you signed in with a device code can read and change your files. Disconnect one to stop its access right away; it would have to be signed in again.'}
+        </p>
+      )}
       {error && <div className="form-error">{error}</div>}
       {agents === null ? (
         !error && <div className="page-loading">Loading…</div>
-      ) : agents.length === 0 ? (
+      ) : !enabled ? null : agents.length === 0 ? (
         <p className="changes-empty">No agents are connected.</p>
       ) : (
         <table className="agents-table">
           <thead>
             <tr>
               <th>Agent</th>
-              <th>Signed in from</th>
+              {!local && <th>Signed in from</th>}
               <th>Connected</th>
-              <th>Last active</th>
+              {!local && <th>Last active</th>}
               <th />
             </tr>
           </thead>
@@ -349,9 +419,9 @@ function ConnectedAgents() {
                   <div className="agents-name">{a.name}</div>
                   <div className="agents-endpoint">{a.endpoint}</div>
                 </td>
-                <td>{a.origin}</td>
+                {!local && <td>{a.origin}</td>}
                 <td>{when(a.connectedAt)}</td>
-                <td>{when(a.lastActiveAt)}</td>
+                {!local && <td>{a.lastActiveAt ? when(a.lastActiveAt) : ''}</td>}
                 <td>
                   <button type="button" className="btn danger" disabled={busy === a.id} onClick={() => void disconnect(a.id)}>
                     {busy === a.id ? 'Disconnecting…' : 'Disconnect'}

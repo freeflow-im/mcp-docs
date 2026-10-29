@@ -246,7 +246,6 @@ export const api = {
   /** The desktop app: drag a file of the folder out of the window as the file itself, to another app. */
   dragOutLocal: (kind: SheetMeta['kind'] | 'file', id: string) => request<{ ok: true }>('POST', '/api/local/drag', { kind, id }),
   /** The desktop app: show how to connect an agent to its MCP server (and who is connected). */
-  connectAgent: () => request<{ ok: true }>('POST', '/api/local/connect-agent'),
   /** The library's file at a path inside the open folder. */
   resolveLocal: (file: string) => request<{ kind: SheetMeta['kind'] | 'file'; id: string }>('GET', `/api/local/resolve?file=${encodeURIComponent(file)}`),
   login: (email: string, password: string) => request<{ user: User }>('POST', '/api/auth/login', { email, password }),
@@ -362,7 +361,7 @@ export const api = {
   saveAssistantSettings: (body: AssistantSettingsUpdate) => request<{ settings: AssistantSettings }>('PUT', '/api/settings/assistant', body),
   /** Store a copy of a picture on the web; resolves to its /api/images/... address. */
   keepWebImage: async (url: string) => (await request<{ url: string }>('POST', '/api/images/fetch', { url })).url,
-  connectedAgents: () => request<{ enabled: boolean; agents: ConnectedAgent[]; mcpUrl?: string }>('GET', '/api/settings/agents'),
+  connectedAgents: () => request<{ enabled: boolean; agents: ConnectedAgent[]; mcpUrl?: string; local?: true; running?: boolean }>('GET', '/api/settings/agents'),
   disconnectAgent: (id: string) => request<{ ok: true }>('DELETE', `/api/settings/agents/${encodeURIComponent(id)}`),
   revertJob: (id: string) => request<{ job: AgentJob }>('POST', `/api/agent/jobs/${encodeURIComponent(id)}/revert`, {}),
 };

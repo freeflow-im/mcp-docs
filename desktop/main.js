@@ -251,21 +251,15 @@ function fileChanged(id, server) {
   }
 }
 
-async function connectAgent() {
-  const command = `claude mcp add --scope user --transport http mcp-docs ${MCP_URL}/mcp`;
-  const agents = mcpAuth?.clients() ?? [];
-  const connected = agents.length ? `Connected now: ${agents.map((a) => a.name).join(', ')}.` : 'No agent is connected yet.';
-  const res = await dialog.showMessageBox({
-    type: 'info',
-    title: 'Connect an Agent',
-    message: mcpListening ? 'Agents on this computer can read and edit the open folder’s files, and the app shows what they open.' : `The MCP server is not running: port ${MCP_PORT} is in use, probably by another copy of the app.`,
-    detail: `MCP server (MCP Docs): ${MCP_URL}/mcp\n\nTo add it to Claude Code, run the command below (or install the mcp-docs plugin with: npx @freeflow-im/mcp-docs), then /mcp in Claude Code to sign in. The app asks you to allow each agent that connects.\n\n${command}\n\n${connected}`,
-    buttons: agents.length ? ['Copy Command', 'Disconnect All Agents', 'Close'] : ['Copy Command', 'Close'],
-    defaultId: 0,
-    cancelId: agents.length ? 2 : 1,
-  });
-  if (res.response === 0) clipboard.writeText(command);
-  if (agents.length && res.response === 1) mcpAuth.revokeAll();
+/** Settings' list of the agents connected to the MCP server, and its Disconnect (desktop/server.ts asks). */
+function agentsAnswer(msg) {
+  if (msg.disconnect !== undefined) return typeof msg.disconnect === 'string' && !!mcpAuth?.revoke(msg.disconnect);
+  return { url: `${MCP_URL}/mcp`, running: mcpListening, agents: mcpAuth?.clients() ?? [] };
+}
+
+/** Connect an Agent: Settings, which has the MCP server's address, how to add it and the agents connected. */
+function connectAgent() {
+  showPage('/settings#agents');
 }
 
 // --- PDFs (server/pdf.ts) ------------------------------------------------------------------------------------
@@ -406,7 +400,7 @@ async function startServer(dir) {
     if (msg && typeof msg.openFileInTab === 'string') void openFile(msg.openFileInTab, false).catch(failed);
     if (msg && typeof msg.openFolder === 'string') void openFolder(msg.openFolder, msg.folder ? `/?folder=${encodeURIComponent(msg.folder)}` : '/', msg.inTab ? null : windowFor(server)).catch(failed);
     if (msg?.chooseFolder) void chooseFolder(windowFor(server), msg.inTab === true).catch(failed);
-    if (msg?.connectAgent) void connectAgent().catch(failed);
+    if (msg && typeof msg.agents === 'string') child.connected && child.send({ agentsDone: msg.agents, answer: agentsAnswer(msg) });
     if (msg && typeof msg.reveal === 'string' && inFolder(msg.reveal, server.dir)) reveal(msg.reveal);
     if (msg && typeof msg.drag === 'string' && inFolder(msg.drag, server.dir)) void dragOut(msg.drag, windowFor(server)).catch(() => {});
     if (msg && typeof msg.show === 'string' && msg.show.startsWith('/')) showPage(msg.show, server);
@@ -865,7 +859,7 @@ function buildMenu() {
           { label: 'Open Folder…', accelerator: 'CmdOrCtrl+Shift+O', click: () => void chooseFolder(isWeb(BrowserWindow.getFocusedWindow()) ? null : BrowserWindow.getFocusedWindow()).catch((e) => dialog.showErrorBox('MCP Docs', String(e.message ?? e))) },
           { label: mac ? 'Show Folder in Finder' : 'Show Folder', click: () => frontServer() && void shell.openPath(frontServer().dir) },
           { type: 'separator' },
-          { label: 'Connect an Agent (MCP)…', click: () => void connectAgent() },
+          { label: 'Connect an Agent (MCP)…', click: () => connectAgent() },
           { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => showPage('/settings') },
           { label: 'Sign Out of Web', click: () => void signOutOfWeb() },
           { type: 'separator' },

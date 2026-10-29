@@ -94,8 +94,11 @@ describe('signing in agents to the desktop app', () => {
     const again = new LocalOAuth({ file, issuer: origin, approve: async () => true });
     expect(again.verify(`Bearer ${refreshed.access_token}`)).toBe('Claude Code (mcp-docs)');
 
-    auth.revokeAll();
+    expect(auth.revoke('nope')).toBe(false);
+    expect(auth.revoke(client_id)).toBe(true);
     expect(auth.verify(`Bearer ${refreshed.access_token}`)).toBeNull();
+    expect(auth.clients()).toEqual([]);
+    auth.revokeAll();
     expect(auth.clients()).toEqual([]);
   });
 

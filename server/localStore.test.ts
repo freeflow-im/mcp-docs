@@ -652,10 +652,12 @@ describe('recents: the files last opened on the machine', () => {
     const dirs: string[] = [];
     const inTabs: string[] = [];
     const chosen: (boolean | undefined)[] = [];
-    let connecting = 0;
+    let agents = [{ id: 'c1', name: 'Claude Code (mcp-docs)', approved: '2026-10-01T00:00:00.000Z' }];
     const app = await buildApp({
       dataDir: data,
-      local: { dir: folder, recents: null, openFile: (f, r) => files.push([f, r]), openFileInTab: (f) => inTabs.push(f), openFolder: (d, t) => dirs.push(t ? `tab:${d}` : d), chooseFolder: (t) => chosen.push(t), connectAgent: () => connecting++ },
+      local: { dir: folder, recents: null, openFile: (f, r) => files.push([f, r]), openFileInTab: (f) => inTabs.push(f), openFolder: (d, t) => dirs.push(t ? `tab:${d}` : d), chooseFolder: (t) => chosen.push(t),
+        agents: { list: async () => ({ url: 'http://127.0.0.1:39217/mcp', running: true, agents }), disconnect: async (id) => agents.length !== (agents = agents.filter((a) => a.id !== id)).length },
+      },
     });
     const open = async (p: unknown, tab?: boolean) => {
       const res = await app.inject({ method: 'POST', url: '/api/local/open-path', payload: { path: p, ...(tab ? { tab } : {}) } });
@@ -701,8 +703,17 @@ describe('recents: the files last opened on the machine', () => {
       expect((await app.inject({ method: 'POST', url: '/api/local/choose-folder' })).statusCode).toBe(200);
       expect((await app.inject({ method: 'POST', url: '/api/local/choose-folder', payload: { tab: true } })).statusCode).toBe(200);
       expect(chosen).toEqual([false, true]);
-      expect((await app.inject({ method: 'POST', url: '/api/local/connect-agent' })).statusCode).toBe(200);
-      expect(connecting).toBe(1);
+      // Settings shows the agents connected to the app's own MCP server, at its address, and disconnects one.
+      expect((await app.inject({ method: 'GET', url: '/api/settings/agents' })).json()).toEqual({
+        enabled: true,
+        local: true,
+        running: true,
+        mcpUrl: 'http://127.0.0.1:39217/mcp',
+        agents: [{ id: 'c1', name: 'Claude Code (mcp-docs)', origin: 'This computer', endpoint: 'http://127.0.0.1:39217/mcp', connectedAt: '2026-10-01T00:00:00.000Z' }],
+      });
+      expect((await app.inject({ method: 'DELETE', url: '/api/settings/agents/c1' })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'DELETE', url: '/api/settings/agents/c1' })).statusCode).toBe(404);
+      expect(agents).toEqual([]);
     } finally {
       await app.close();
       rmSync(data, { recursive: true, force: true });

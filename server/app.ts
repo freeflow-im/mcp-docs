@@ -22,7 +22,7 @@ import { importDocx } from './docxImport.ts';
 import { closePdfReaders, isPdf, PdfError, pdfToMarkdownFile } from './pdfMarkdown.ts';
 import { FileStore, isImageOfType, isTextFile } from './files.ts';
 import { checkImageEditRate, editedImageName, EDITABLE_IMAGE_TYPES, ImageEditError, MAX_EDIT_IMAGE_BYTES, MAX_EDIT_PROMPT_CHARS, openaiImageEditor, type ImageEditor } from './imageEdit.ts';
-import { CELL_IMAGE_TYPES, fileTypeOf, HTML_TYPE, isHtmlName, isTextFileType, MAX_CELL_IMAGE_BYTES, MAX_VIDEO_BYTES, PREVIEW_FILE_TYPES, videoTypeOf, VIDEO_TYPES, type DocKind, type SheetMeta, type Workbook } from '../shared/types.ts';
+import { CELL_IMAGE_TYPES, fileTypeOf, HTML_TYPE, isHtmlName, isTextFileType, MAX_CELL_IMAGE_BYTES, MAX_VIDEO_BYTES, PREVIEW_FILE_TYPES, videoTypeOf, VIDEO_TYPES, type ConnectedAgent, type DocKind, type SheetMeta, type Workbook } from '../shared/types.ts';
 import { AgentError, AgentService, type AgentOptions } from './agent/agent.ts';
 import { JobRunner, JobStore, publicJob, workerLauncher, type Launcher } from './agent/jobs.ts';
 import { openaiErrorMessage } from './agent/openai.ts';
@@ -95,6 +95,13 @@ declare module 'fastify' {
   }
 }
 
+/** The desktop app's MCP server for agents on this computer: its address, whether it is running (another copy of the app may hold its port), and the agents allowed. */
+export interface LocalAgents {
+  list(): Promise<{ url: string; running: boolean; agents: { id: string; name: string; approved: string }[] }>;
+  /** Disconnect one: false if there is no such agent. */
+  disconnect(id: string): Promise<boolean>;
+}
+
 export interface AppOptions {
   dataDir: string;
   staticDir?: string;
@@ -163,8 +170,8 @@ export interface AppOptions {
     web?: Web;
     /** Options for the assistant run on the user's own Claude Code (tests pass a stub query and executable). */
     claudeAgent?: Partial<ClaudeAgentOptions>;
-    /** Show how to connect an agent to the app's MCP server, in the desktop app's dialog. */
-    connectAgent?: () => void;
+    /** The agents connected to the desktop app's MCP server (its main process signs them in: desktop/mcpAuth.js), for Settings. */
+    agents?: LocalAgents;
     /** Show a file or folder of the folder in the system's file browser (Finder, File Explorer): a folder opened, a file selected in its own. */
     reveal?: (target: string) => void;
     /** Drag a file of the folder out of the window as the file itself, to another app (a drag the system runs, from the window in front). */
@@ -1902,13 +1909,6 @@ export async function buildApp(opts: AppOptions) {
       return { ok: true };
     });
 
-    // Show the desktop app's Connect an Agent dialog.
-    r.post('/api/local/connect-agent', async (_req, reply) => {
-      if (!opts.local?.connectAgent) return reply.code(400).send({ error: 'Agents cannot be connected here.' });
-      opts.local.connectAgent();
-      return { ok: true };
-    });
-
     // Go back to the folder a scratch pad was opened from (its breadcrumbs, the logo, Home): the window switches to
     // `dir` again, showing the folder `at` in it (not named `folder`, which requests name in this one).
     r.post('/api/local/return', async (req, reply) => {
@@ -2196,11 +2196,20 @@ export async function buildApp(opts: AppOptions) {
     });
 
     // --- Agents signed in to the plugin's MCP endpoint with a device code (none when the plugin is not mounted) ---
-    r.get('/api/settings/agents', async (req) => ({ enabled: !!pluginOAuth, agents: pluginOAuth?.connectedAgents(req.user!.id) ?? [], ...(pluginOAuth ? { mcpUrl: `${originOf(req)}/mcp/v2` } : {}) }));
+    // In the desktop app, the agents on this computer signed in to its own MCP server, at its fixed address.
+    r.get('/api/settings/agents', async (req) => {
+      const local = opts.local?.agents;
+      if (local) {
+        const { url, running, agents } = await local.list();
+        return { enabled: true, local: true, running, mcpUrl: url, agents: agents.map((a): ConnectedAgent => ({ id: a.id, name: a.name, origin: 'This computer', endpoint: url, connectedAt: a.approved })) };
+      }
+      return { enabled: !!pluginOAuth, agents: pluginOAuth?.connectedAgents(req.user!.id) ?? [], ...(pluginOAuth ? { mcpUrl: `${originOf(req)}/mcp/v2` } : {}) };
+    });
 
     r.delete('/api/settings/agents/:id', async (req, reply) => {
       const { id } = req.params as { id: string };
-      if (!pluginOAuth?.disconnectAgent(req.user!.id, id)) return reply.code(404).send({ error: 'No such agent.' });
+      const local = opts.local?.agents;
+      if (!(local ? await local.disconnect(id) : pluginOAuth?.disconnectAgent(req.user!.id, id))) return reply.code(404).send({ error: 'No such agent.' });
       return { ok: true };
     });
 

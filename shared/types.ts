@@ -192,8 +192,8 @@ export interface ConnectedAgent {
   /** The MCP endpoint its tokens are for. */
   endpoint: string;
   connectedAt: string;
-  /** When it last got fresh tokens (it refreshes about hourly while in use). */
-  lastActiveAt: string;
+  /** When it last got fresh tokens (it refreshes about hourly while in use); not known in the desktop app. */
+  lastActiveAt?: string;
 }
 
 export interface StoredFile {

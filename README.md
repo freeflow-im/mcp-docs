@@ -98,8 +98,8 @@ While the app runs it is an MCP server at `http://127.0.0.1:39217/mcp` (Streamab
 - **Any other MCP client**: point it at the same address. It signs in with OAuth 2.1 (dynamic client registration
   and PKCE, as MCP clients do), and MCP Docs shows a dialog asking you to allow each client; nothing is typed into a
   browser.
-- **File › Connect an Agent (MCP)…** (or the **Connect your agent** tile on the home page) shows the address and the
-  command, lists the agents connected and disconnects them.
+- **File › Connect an Agent (MCP)…** (or the **Connect your agent** tile on the home page) opens Settings, which
+  shows the address and the command, lists the agents connected and disconnects each one.
 
 An agent gets about 60 tools: list, search, open, create, rename, move and delete files and folders; read and edit
 documents (as Markdown), presentations (slides, their elements and themes; `render_slide` shows it a slide as drawn)

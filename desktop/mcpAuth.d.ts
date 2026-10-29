@@ -8,6 +8,7 @@ export class LocalOAuth {
   constructor(opts: { file: string; issuer: string; approve: (name: string) => Promise<boolean>; now?: () => number });
   readonly resourceMetadataUrl: string;
   clients(): { id: string; name: string; approved: string }[];
+  revoke(id: string): boolean;
   revokeAll(): void;
   verify(header: string | undefined): string | null;
   handles(pathname: string): boolean;

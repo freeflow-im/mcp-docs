@@ -88,6 +88,16 @@ export class LocalOAuth {
       .map(([id, c]) => ({ id, name: c.name, approved: c.approved }));
   }
 
+  /** Disconnect one agent: its tokens stop working, and it must be approved again. False if there is no such agent. */
+  revoke(id) {
+    if (!this.state.clients[id]) return false;
+    delete this.state.clients[id];
+    for (const tokens of [this.state.access, this.state.refresh]) for (const [k, t] of Object.entries(tokens)) if (t.clientId === id) delete tokens[k];
+    for (const [code, c] of this.codes) if (c.clientId === id) this.codes.delete(code);
+    this.save();
+    return true;
+  }
+
   /** Disconnect every agent: their tokens stop working, and each must be approved again. */
   revokeAll() {
     this.state = { clients: {}, access: {}, refresh: {} };

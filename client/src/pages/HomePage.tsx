@@ -585,7 +585,7 @@ function FileList() {
                     Changes
                   </Link>
                 )}
-                <Link role="menuitem" to="/settings" title="Choose the model the assistant runs on">
+                <Link role="menuitem" to="/settings" title="What the assistant runs on, and connecting your agent">
                   Settings
                 </Link>
               </div>
@@ -610,8 +610,8 @@ function FileList() {
         local || user ? (
           <>
             <div>
-              {/* The desktop app shows its Connect an Agent dialog; on the web, Settings has the MCP address. */}
-              <button className="new-sheet-tile help-tile agent-tile" onClick={() => (local ? void api.connectAgent() : navigate('/settings#agents'))}>
+              {/* Settings has the MCP address (the desktop app's own, or the hosted one) and the agents connected. */}
+              <button className="new-sheet-tile help-tile agent-tile" onClick={() => navigate('/settings#agents')}>
                 <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0zM12 16v5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
