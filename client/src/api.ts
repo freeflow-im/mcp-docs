@@ -6,7 +6,7 @@ import type { LinkedChart, SheetChartList } from '../../shared/chart.ts';
 import type { Doc } from '../../shared/doc.ts';
 import type { MarkdownDoc } from '../../shared/markdown.ts';
 import type { FilePreview } from '../../shared/preview.ts';
-import { CELL_IMAGE_TOO_LARGE, type ConnectedAgent, type DeletedFile, type SheetMeta, type StoredFile, type Workbook } from '../../shared/types.ts';
+import { CELL_IMAGE_TOO_LARGE, type ConnectedAgent, type DeletedFile, type NewFilesSettings, type NewFilesUpdate, type SheetMeta, type StoredFile, type Workbook } from '../../shared/types.ts';
 import type { ZipEntry, ZipOfficeView } from '../../shared/zip.ts';
 
 export interface User {
@@ -363,6 +363,8 @@ export const api = {
   keepWebImage: async (url: string) => (await request<{ url: string }>('POST', '/api/images/fetch', { url })).url,
   connectedAgents: () => request<{ enabled: boolean; agents: ConnectedAgent[]; mcpUrl?: string; local?: true; running?: boolean }>('GET', '/api/settings/agents'),
   disconnectAgent: (id: string) => request<{ ok: true }>('DELETE', `/api/settings/agents/${encodeURIComponent(id)}`),
+  newFilesSettings: () => request<NewFilesSettings>('GET', '/api/settings/new-files'),
+  saveNewFilesSettings: (update: NewFilesUpdate) => request<NewFilesSettings>('PUT', '/api/settings/new-files', update),
   revertJob: (id: string) => request<{ job: AgentJob }>('POST', `/api/agent/jobs/${encodeURIComponent(id)}/revert`, {}),
 };
 

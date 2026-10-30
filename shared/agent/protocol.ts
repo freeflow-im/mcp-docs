@@ -403,6 +403,8 @@ export interface AssistantSettings {
   anthropicKey: string | null;
   openaiKey: string | null;
   openrouterKey: string | null;
+  /** The user's Brave Search API key for web and image search, masked, or null (then the provider's own search is used). */
+  braveKey: string | null;
 }
 
 /**
@@ -417,4 +419,6 @@ export interface AssistantSettingsUpdate {
   anthropicKey?: string | null;
   openaiKey?: string | null;
   openrouterKey?: string | null;
+  /** A new Brave Search API key, null to remove the saved one; omitted keeps it. */
+  braveKey?: string | null;
 }

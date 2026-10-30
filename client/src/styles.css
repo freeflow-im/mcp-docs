@@ -721,11 +721,6 @@ textarea {
 .wb-title-row .favorite-star {
   margin-right: -8px;
 }
-.file-page-title .favorite-star {
-  margin-right: 4px;
-  /* Level with the name in the inline title (middle sits it on the text's middle, a little low). */
-  vertical-align: bottom;
-}
 .wb-user {
   display: flex;
   align-items: center;
@@ -3955,12 +3950,13 @@ button.agent-tool-label:hover {
   height: 100%;
   background: #fff;
 }
-.file-page-title {
-  flex: 1;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* A file's page has the editors' header: its title row and File menu, then its buttons, which may be several. */
+.file-page .wb-header {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.file-page .wb-user {
+  max-width: none;
 }
 .file-page-body {
   flex: 1;
@@ -4341,6 +4337,27 @@ button.agent-tool-label:hover {
 .settings-tab.active {
   color: var(--blue);
   border-bottom-color: var(--blue);
+}
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.settings-kinds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+.settings-kinds .settings-check {
+  font-weight: normal;
+}
+.settings-folders {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .signature-tabs {
   display: flex;
@@ -4936,9 +4953,6 @@ button.agent-tool-label:hover {
 }
 .wb-title-row .folder-crumbs {
   margin-right: -8px;
-}
-.file-page-title .folder-crumbs {
-  margin-right: 4px;
 }
 /* The per-row button that opens a file in a new tab. */
 .sheet-list .row-actions {
@@ -5667,12 +5681,9 @@ img.thumb-image {
     gap: 8px;
     min-width: 0;
   }
-  .file-page .home-user {
+  .file-page .wb-user {
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-  .file-page-title {
-    min-width: 0;
   }
   .home-inner {
     padding: 0 12px;

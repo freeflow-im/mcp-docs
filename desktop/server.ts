@@ -8,8 +8,10 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { buildApp, type LocalAgents } from '../server/app.ts';
 import { spotlightFind } from '../server/localStore.ts';
+import { onOwnWrite } from '../server/sheets.ts';
 import { ElectronRenderer, type PdfAnswer } from '../server/pdf.ts';
 import { WebBridge, type WebAnswer } from '../server/webCopy.ts';
+import type { NewFilesSettings, NewFilesUpdate } from '../shared/types.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const dir = process.env.LOCAL_DIR;
@@ -29,18 +31,22 @@ if (pdf) process.on('message', (msg: Partial<PdfAnswer> | null) => typeof msg?.p
 // Download to Folder).
 const web = send ? new WebBridge((msg) => send(msg)) : undefined;
 if (web) process.on('message', (msg: Partial<WebAnswer> | null) => typeof msg?.webDone === 'string' && web.answer(msg as WebAnswer));
-// The agents connected to the app's MCP server are main.js's (it signs them in): Settings asks it for them, and
-// to disconnect one, and waits for its answer.
+// Settings asks main.js for what is its: the agents connected to the app's MCP server (it signs them in), to
+// disconnect one, and whether new files in Downloads, Documents and Desktop open (it watches them); and waits
+// for its answer.
 const asked = new Map<string, (answer: unknown) => void>();
-if (send) process.on('message', (msg: { agentsDone?: string; answer?: unknown } | null) => typeof msg?.agentsDone === 'string' && asked.get(msg.agentsDone)?.(msg.answer));
+if (send) process.on('message', (msg: { askDone?: string; answer?: unknown } | null) => typeof msg?.askDone === 'string' && asked.get(msg.askDone)?.(msg.answer));
 const askMain = <T,>(msg: object): Promise<T> =>
   new Promise((resolve, reject) => {
     const id = randomBytes(8).toString('hex');
     const timer = setTimeout(() => (asked.delete(id), reject(new Error('The app did not answer.'))), 10_000);
     asked.set(id, (answer) => (asked.delete(id), clearTimeout(timer), resolve(answer as T)));
-    send!({ ...msg, agents: id });
+    send!({ ...msg, ask: id });
   });
 const agents: LocalAgents | undefined = send && process.env.MCP_TOKEN ? { list: () => askMain({ list: true }), disconnect: (id) => askMain({ disconnect: id }) } : undefined;
+const newFiles = send ? { get: () => askMain<NewFilesSettings>({ newFiles: true }), set: (update: NewFilesUpdate) => askMain<NewFilesSettings>({ newFiles: update }) } : undefined;
+// The files the app writes are not new files for main.js to open.
+if (send) onOwnWrite((file) => send({ wrote: file }));
 const app = await buildApp({
   dataDir,
   staticDir: path.join(root, 'dist', 'client'),
@@ -54,6 +60,7 @@ const app = await buildApp({
     openFolder: (dir, inTab = false, folder) => process.send?.({ openFolder: dir, inTab, folder }),
     chooseFolder: (inTab = false) => process.send?.({ chooseFolder: true, inTab }),
     agents,
+    newFiles,
     reveal: (target) => process.send?.({ reveal: target }),
     startDrag: (file) => process.send?.({ drag: file }),
     // A search asks Spotlight before it walks the folder.

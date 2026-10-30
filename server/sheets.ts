@@ -466,4 +466,17 @@ export async function writeAtomic(target: string, data: string | Buffer): Promis
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, data);
   await rename(tmp, target);
+  wroteFile(target);
+}
+
+let ownWrites: ((file: string) => void) | null = null;
+/**
+ * Be told of each file the app writes (writeAtomic, Download to Folder): the desktop app opens new files that
+ * appear in some folders (desktop/newFiles.js), but not its own, a document made in the app, say.
+ */
+export function onOwnWrite(fn: ((file: string) => void) | null): void {
+  ownWrites = fn;
+}
+export function wroteFile(file: string): void {
+  ownWrites?.(file);
 }

@@ -22,16 +22,16 @@ import { importDocx } from './docxImport.ts';
 import { closePdfReaders, isPdf, PdfError, pdfToMarkdownFile } from './pdfMarkdown.ts';
 import { FileStore, isImageOfType, isTextFile } from './files.ts';
 import { checkImageEditRate, editedImageName, EDITABLE_IMAGE_TYPES, ImageEditError, MAX_EDIT_IMAGE_BYTES, MAX_EDIT_PROMPT_CHARS, openaiImageEditor, type ImageEditor } from './imageEdit.ts';
-import { CELL_IMAGE_TYPES, fileTypeOf, HTML_TYPE, isHtmlName, isTextFileType, MAX_CELL_IMAGE_BYTES, MAX_VIDEO_BYTES, PREVIEW_FILE_TYPES, videoTypeOf, VIDEO_TYPES, type ConnectedAgent, type DocKind, type SheetMeta, type Workbook } from '../shared/types.ts';
+import { CELL_IMAGE_TYPES, fileTypeOf, HTML_TYPE, isHtmlName, isTextFileType, MAX_CELL_IMAGE_BYTES, MAX_VIDEO_BYTES, PREVIEW_FILE_TYPES, videoTypeOf, VIDEO_TYPES, type ConnectedAgent, type DocKind, type NewFilesSettings, type NewFilesUpdate, type SheetMeta, type Workbook } from '../shared/types.ts';
 import { AgentError, AgentService, type AgentOptions } from './agent/agent.ts';
 import { JobRunner, JobStore, publicJob, workerLauncher, type Launcher } from './agent/jobs.ts';
 import { openaiErrorMessage } from './agent/openai.ts';
 import { OpenRouterError } from './agent/openrouter.ts';
 import { checkAssistantKey, OwnKeyError } from './agent/providers.ts';
-import { AssistantSettingsStore, SettingsError, type KeyCheck } from './agent/settings.ts';
+import { AssistantSettingsStore, SettingsError, type KeyCheck, type SearchKeyCheck } from './agent/settings.ts';
 import { isSignatureImage, MAX_SIGNATURES, SignatureStore } from './signatures.ts';
 import { AgentStore } from './agent/store.ts';
-import { registerConnectorService } from './agent/tools.ts';
+import { checkBraveKey, registerConnectorService } from './agent/tools.ts';
 import { ConnectorService, type ConnectorServiceOptions } from './connectors/service.ts';
 import { ConnectorError } from './connectors/types.ts';
 import { AuthService, RESET_TTL_MS, SESSION_TTL_MS, VERIFY_TTL_MS, validateCredentials, type User } from './auth.ts';
@@ -128,6 +128,8 @@ export interface AppOptions {
   pdf?: PdfRenderer | null;
   /** Checks an assistant API key before it is saved in Settings. Tests pass a stub; the default asks the provider. */
   checkAssistantKey?: KeyCheck;
+  /** Checks a Brave Search API key before it is saved in Settings. Tests pass a stub; the default searches once with it. */
+  checkSearchKey?: SearchKeyCheck;
   /** Edits a picture for the assistant's edit_image. Tests pass a stub; the default asks OpenAI's image model. */
   imageEditor?: ImageEditor;
   /** Connector overrides (tests pass a fake fetch). */
@@ -172,6 +174,8 @@ export interface AppOptions {
     claudeAgent?: Partial<ClaudeAgentOptions>;
     /** The agents connected to the desktop app's MCP server (its main process signs them in: desktop/mcpAuth.js), for Settings. */
     agents?: LocalAgents;
+    /** Whether the desktop app opens new files that appear in Downloads, Documents and Desktop (its main process watches them), for Settings. */
+    newFiles?: { get(): Promise<NewFilesSettings>; set(update: NewFilesUpdate): Promise<NewFilesSettings> };
     /** Show a file or folder of the folder in the system's file browser (Finder, File Explorer): a folder opened, a file selected in its own. */
     reveal?: (target: string) => void;
     /** Drag a file of the folder out of the window as the file itself, to another app (a drag the system runs, from the window in front). */
@@ -2173,7 +2177,7 @@ export async function buildApp(opts: AppOptions) {
 
     r.put('/api/settings/assistant', async (req, reply) => {
       try {
-        return { settings: await assistantSettings.update(req.user!.id, (req.body ?? {}) as Partial<AssistantSettingsUpdate>, opts.checkAssistantKey ?? checkAssistantKey) };
+        return { settings: await assistantSettings.update(req.user!.id, (req.body ?? {}) as Partial<AssistantSettingsUpdate>, opts.checkAssistantKey ?? checkAssistantKey, opts.checkSearchKey ?? checkBraveKey) };
       } catch (e) {
         if (e instanceof SettingsError) return reply.code(400).send({ error: e.message });
         throw e;
@@ -2211,6 +2215,21 @@ export async function buildApp(opts: AppOptions) {
       const local = opts.local?.agents;
       if (!(local ? await local.disconnect(id) : pluginOAuth?.disconnectAgent(req.user!.id, id))) return reply.code(404).send({ error: 'No such agent.' });
       return { ok: true };
+    });
+
+    // --- New files the desktop app opens (desktop/newFiles.js) ---
+    r.get('/api/settings/new-files', async (_req, reply) => {
+      const newFiles = opts.local?.newFiles;
+      return newFiles ? newFiles.get() : reply.code(404).send({ error: 'Only the desktop app opens new files.' });
+    });
+
+    r.put('/api/settings/new-files', async (req, reply) => {
+      const newFiles = opts.local?.newFiles;
+      if (!newFiles) return reply.code(404).send({ error: 'Only the desktop app opens new files.' });
+      const { open, kinds } = (req.body ?? {}) as { open?: unknown; kinds?: unknown };
+      if (open !== undefined && typeof open !== 'boolean') return reply.code(400).send({ error: 'open must be true or false.' });
+      if (kinds !== undefined && !(Array.isArray(kinds) && kinds.every((k) => typeof k === 'string'))) return reply.code(400).send({ error: 'kinds must be a list of kinds of file.' });
+      return newFiles.set({ open, kinds });
     });
 
     // --- App-change jobs (self-improvement) ---

@@ -8,6 +8,7 @@ import { buildApp, LOCAL_COOKIE, SCRATCH_DIR, scratchPadName } from './app.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { LISTED_EXTS } from './localStore.ts';
 import { APP_RECENTS, listable, openedFiles, parseRecents, recentFiles, RecentOpens } from './recents.ts';
+import { onOwnWrite } from './sheets.ts';
 import { importXlsx } from './xlsxImport.ts';
 import { importPptx } from './pptxImport.ts';
 import { newId, type Deck, type TextElement } from '../shared/deck.ts';
@@ -718,6 +719,32 @@ describe('recents: the files last opened on the machine', () => {
       await app.close();
       rmSync(data, { recursive: true, force: true });
       rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it('asks the app whether new files open, and tells it the files it writes', async () => {
+    const data = mkdtempSync(path.join(tmpdir(), 'sheetsweb-localdata-'));
+    let open = true;
+    let kinds = ['pdf'];
+    const now = () => ({ open, folders: ['/Users/me/Downloads'], kinds: [{ id: 'pdf', label: 'PDFs', on: kinds.includes('pdf') }] });
+    const newFiles = { get: async () => now(), set: async (u: { open?: boolean; kinds?: string[] }) => ((open = u.open ?? open), (kinds = u.kinds ?? kinds), now()) };
+    const local = await buildApp({ dataDir: data, local: { dir: folder, recents: null, newFiles } });
+    const written: string[] = [];
+    onOwnWrite((file) => written.push(file));
+    try {
+      expect((await local.inject({ method: 'GET', url: '/api/settings/new-files' })).json()).toEqual(now());
+      expect((await local.inject({ method: 'PUT', url: '/api/settings/new-files', payload: { open: 'no' } })).statusCode).toBe(400);
+      expect((await local.inject({ method: 'PUT', url: '/api/settings/new-files', payload: { kinds: 'pdf' } })).statusCode).toBe(400);
+      expect((await local.inject({ method: 'PUT', url: '/api/settings/new-files', payload: { open: false } })).json()).toMatchObject({ open: false, kinds: [{ id: 'pdf', on: true }] });
+      expect((await local.inject({ method: 'PUT', url: '/api/settings/new-files', payload: { kinds: [] } })).json()).toMatchObject({ open: false, kinds: [{ id: 'pdf', on: false }] });
+      // Without the desktop app's main process (the web app, a server on its own) nothing watches.
+      expect((await app.inject({ method: 'GET', url: '/api/settings/new-files' })).statusCode).toBe(404);
+      const doc = (await local.inject({ method: 'POST', url: '/api/docs', payload: { title: 'Mine' } })).json() as { doc: SheetMeta };
+      expect(written).toContain(at(doc.doc.title));
+    } finally {
+      onOwnWrite(null);
+      await local.close();
+      rmSync(data, { recursive: true, force: true });
     }
   });
 

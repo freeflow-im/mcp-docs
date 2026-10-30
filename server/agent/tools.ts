@@ -18,6 +18,7 @@ import type { ConnectorService } from '../connectors/service.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import type { FileStore } from '../files.ts';
 import type { ImageStore } from '../images.ts';
+import type { ImageCandidate, ProviderSearch } from './llmSearch.ts';
 import { importBytes, ImportFileError, importLimit, webImportName } from '../importFile.ts';
 import { PdfError, pdfToMarkdownFile } from '../pdfMarkdown.ts';
 import { PrintError, type PdfMaker } from '../pdf.ts';
@@ -757,6 +758,11 @@ export interface ServerToolEnv {
   /** Makes PDFs of files (server/pdf.ts); without it export_pdf is not available. */
   pdf?: PdfMaker;
   context: AgentContext;
+  /**
+   * How web_search and image_search search: the user's Brave Search API key (Settings), else the server's
+   * BRAVE_SEARCH_API_KEY, else the assistant's model provider's own web search (llmSearch.ts), when it has one.
+   */
+  search?: { braveKey?: string | null; provider?: ProviderSearch | null };
 }
 
 /** Run an account tool. Returns the result text for Claude; throws ToolFailure for errors Claude should see. */
@@ -958,7 +964,16 @@ export async function runServerTool(name: string, input: Record<string, unknown>
       checkSearchRate(env.userId);
       const query = String(input.query);
       const max = typeof input.max_results === 'number' ? input.max_results : 5;
-      const results = name === 'web_search' ? await webSearch(query, max) : await imageSearch(query, max);
+      const braveKey = env.search?.braveKey || process.env.BRAVE_SEARCH_API_KEY;
+      const provider = env.search?.provider;
+      if (!braveKey && !provider) {
+        throw new ToolFailure('Search is not set up: there is no Brave Search API key, and the model in use has no web search of its own. Tell the user search is unavailable, and that a Brave Search API key can be added in Settings.');
+      }
+      const results = braveKey
+        ? name === 'web_search'
+          ? await webSearch(braveKey, query, max)
+          : await imageSearch(braveKey, query, max)
+        : await providerSearchResults(provider!, name, query, max);
       if (!results.length) {
         throw new ToolFailure(
           name === 'web_search'
@@ -989,7 +1004,8 @@ function connectorService(env: ServerToolEnv): ConnectorService {
 }
 
 // ---------------------------------------------------------------------------
-// Web and image search, via the Brave Search API. The key is server-side only: set BRAVE_SEARCH_API_KEY.
+// Web and image search, via the Brave Search API: the user's key from Settings, or the server's BRAVE_SEARCH_API_KEY.
+// Without either, the model provider's own web search (llmSearch.ts).
 
 const BRAVE_API = 'https://api.search.brave.com/res/v1';
 const SEARCH_TIMEOUT_MS = 10_000;
@@ -1044,9 +1060,7 @@ const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.fi
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null);
 
-async function braveGet(kind: 'web' | 'images', params: Record<string, string>): Promise<Record<string, unknown>> {
-  const key = process.env.BRAVE_SEARCH_API_KEY;
-  if (!key) throw new ToolFailure('Web search is not set up on this server (no search API key). Tell the user it is unavailable.');
+async function braveGet(key: string, kind: 'web' | 'images', params: Record<string, string>): Promise<Record<string, unknown>> {
   let res: Response;
   try {
     res = await fetch(`${BRAVE_API}/${kind}/search?${new URLSearchParams(params)}`, {
@@ -1065,8 +1079,43 @@ async function braveGet(kind: 'web' | 'images', params: Record<string, string>):
   }
 }
 
-async function webSearch(query: string, max: number): Promise<{ title: string; url: string; snippet: string }[]> {
-  const data = await braveGet('web', { q: query, count: String(max), safesearch: 'moderate' });
+/** Check a Brave Search API key before it is saved in Settings with one small search: what is wrong with it, or null. */
+export async function checkBraveKey(key: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${BRAVE_API}/web/search?${new URLSearchParams({ q: 'test', count: '1' })}`, {
+      headers: { Accept: 'application/json', 'X-Subscription-Token': key },
+      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+    });
+    if (res.ok) return null;
+    return res.status === 401 || res.status === 403 || res.status === 422 ? 'Brave Search did not accept that API key.' : `The key could not be checked with Brave Search (HTTP ${res.status}). Try again in a moment.`;
+  } catch {
+    return 'The key could not be checked with Brave Search. Try again in a moment.';
+  }
+}
+
+/** web_search or image_search on the model provider's own web search, in the shape Brave's results have. */
+async function providerSearchResults(provider: ProviderSearch, name: 'web_search' | 'image_search', query: string, max: number): Promise<unknown[]> {
+  try {
+    if (name === 'image_search') return await checkImages(await provider.images(query, max), max);
+    const seen = new Set<string>();
+    const out: { title: string; url: string; snippet: string }[] = [];
+    for (const r of await provider.web(query, max)) {
+      const url = httpUrl(r.url);
+      if (!url || seen.has(url.href)) continue;
+      seen.add(url.href);
+      out.push({ title: plain(r.title, 200), url: url.href, snippet: plain(r.snippet) });
+    }
+    return out.slice(0, max);
+  } catch (e) {
+    if (e instanceof ToolFailure) throw e;
+    const status = (e as { status?: unknown }).status;
+    if (status === 401 || status === 403) throw new ToolFailure(`${provider.name} did not accept the API key for its web search. Tell the user search is unavailable, and that a Brave Search API key can be added in Settings.`);
+    throw new ToolFailure(`Searching with ${provider.name}'s web search failed (${e instanceof Error ? e.message : String(e)}). Try again in a moment.`);
+  }
+}
+
+async function webSearch(key: string, query: string, max: number): Promise<{ title: string; url: string; snippet: string }[]> {
+  const data = await braveGet(key, 'web', { q: query, count: String(max), safesearch: 'moderate' });
   const out: { title: string; url: string; snippet: string }[] = [];
   for (const r of list(obj(data.web).results)) {
     const url = httpUrl(r.url);
@@ -1100,8 +1149,8 @@ interface ImageResult {
   height: number | null;
 }
 
-async function imageSearch(query: string, max: number): Promise<ImageResult[]> {
-  const data = await braveGet('images', { q: query, count: String(Math.min(50, max * 4)), safesearch: 'strict' });
+async function imageSearch(key: string, query: string, max: number): Promise<ImageResult[]> {
+  const data = await braveGet(key, 'images', { q: query, count: String(Math.min(50, max * 4)), safesearch: 'strict' });
   const seen = new Set<string>();
   const candidates: { url: URL; result: ImageResult }[] = [];
   for (const r of list(data.results)) {
@@ -1115,6 +1164,25 @@ async function imageSearch(query: string, max: number): Promise<ImageResult[]> {
       result: { title: plain(r.title, 200), image_url: url.href, source_page_url: page ? page.href : null, width: num(props.width), height: num(props.height) },
     });
   }
+  return loadable(candidates, max);
+}
+
+/** The candidates a model found, kept as Brave's are: picture files on public hosts that load directly. */
+async function checkImages(found: ImageCandidate[], max: number): Promise<ImageResult[]> {
+  const seen = new Set<string>();
+  const candidates: { url: URL; result: ImageResult }[] = [];
+  for (const c of found) {
+    const url = httpUrl(c.image_url);
+    if (!url || !publicHost(url) || !/\.(png|jpe?g|gif|webp)$/i.test(url.pathname) || seen.has(url.href)) continue;
+    seen.add(url.href);
+    const page = httpUrl(c.source_page_url);
+    candidates.push({ url, result: { title: plain(c.title, 200), image_url: url.href, source_page_url: page ? page.href : null, width: null, height: null } });
+  }
+  return loadable(candidates, max);
+}
+
+/** The first `max` candidates that load as pictures, hotlink-friendly hosts and https first. */
+async function loadable(candidates: { url: URL; result: ImageResult }[], max: number): Promise<ImageResult[]> {
   // Hotlink-friendly hosts and https first; otherwise keep the search engine's order (sort is stable).
   const rank = (u: URL) => (HOTLINK_FRIENDLY.test(u.hostname) ? 0 : 2) + (u.protocol === 'https:' ? 0 : 1);
   candidates.sort((a, b) => rank(a.url) - rank(b.url));

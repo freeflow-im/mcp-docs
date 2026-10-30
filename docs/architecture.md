@@ -106,6 +106,14 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   the default for the standard ones whatever the app declares, so the installed app offers once, and has
   Make Default App… in the app menu, to set itself as the person's default (`setDefaultApp`). Finder's
   `open-file` shows the file in the open folder when it is inside it, else opens the file's own folder.
+  New files in Downloads, Documents and Desktop (`app.getPath`, so Windows' known folders too) open the same way and
+  bring the app to the front (`desktop/newFiles.js`, `watchFolders` in `main.js`): not recursively, only the kinds chosen in
+  Settings (`KINDS`: Office files, PDFs, Markdown, CSV, other text files, which are any name whose first 8 KB are text, pictures,
+  and videos, off at first), never hidden, lock or unfinished ones (`.crdownload`, `.part`, …), once a file stops changing, and
+  not when several settle at once (a copy). The app's own writes are not new: `writeAtomic` and Download to Folder tell `onOwnWrite` (`server/sheets.ts`),
+  which `desktop/server.ts` passes to `main.js` (a `wrote` message). It is on unless turned off in Settings' Desktop tab, which has the kinds too
+  (`#desktop`, `GET`/`PUT /api/settings/new-files`, `AppOptions.local.newFiles`, kept by `main.js` in `new-files.json`
+  in the app's data folder); Settings asks `main.js` for it, and for the agents below, with an `ask` message.
   Its Recents (see Folders) adds, below the files opened in the app, the files last opened on the machine in any
   app, as Finder's Recents lists them, read from Spotlight on macOS (`recentFiles` in `server/recents.ts`). Opening one outside the open folder
   (`POST /api/local/open`) has the server ask `main.js` (a message to its parent) to open the file's own
@@ -125,7 +133,7 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   The folder button left of it (`LocalFolderMenu`) lists the usual folders in the home folder (`GET /api/local/places`: it, Documents, Downloads, Desktop), and offers Open Folder… (`POST /api/local/choose-folder`,
   `main.js`'s dialog) and Open file by path… (`POST /api/local/open-path`: a file or folder, absolute, `~/` or
   relative to the open folder; one outside it has `main.js` open it, or the file's own folder).
-  Each editor's File menu starts with an Open menu (`useOpenInTab`, `client/src/components/OpenInTab.tsx`): both of them, then
+  Each editor's File menu (a stored file's page too, `FilePage`: pictures, PDFs, text, web pages, videos) starts with an Open menu (`useOpenInTab`, `client/src/components/OpenInTab.tsx`): both of them, then
   Open Favorites and Open Recents, the user's lists (on the web too). All open in a new tab instead (`tab` in the request): one
   inside the folder by `window.open`, one outside by `main.js` (`openFileInTab`, `openFolder`'s `inTab`).
   The home page's Scratch pad tile (`ScratchPadTile`) is a menu of the Markdown files in `~/.config/mcp-docs` (`SCRATCH_DIR`,
@@ -138,7 +146,7 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   Connect your agent goes to Settings' second tab (`#agents`; Assistant is the first), which shows the MCP address (`mcpUrl`
   from `/api/settings/agents`) and the agents connected: on the web the hosted address with Copy agent instruction; in
   the desktop app (`local: true`) the app's own server on this computer with Copy Claude Code command, its agents and
-  whether it is running, which `desktop/server.ts` asks `main.js` for (`AppOptions.local.agents`, an `agents` message).
+  whether it is running, which `desktop/server.ts` asks `main.js` for (`AppOptions.local.agents`, an `ask` message).
   The desktop app is also an MCP server for agents on the same machine (Claude Code, say), named MCP Docs
   (`mcp-docs`; the hosted one is MCP Docs too from version 2, with the id `universal-docs`): `server/localMcp.ts`
   serves the ChatGPT plugin's model tools (`plugin/server`, the newest version, no UI parts) over the open

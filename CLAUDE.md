@@ -51,7 +51,9 @@ for). Read the part you are changing before you change it, and keep it up to dat
 The server runs the Claude loop (`server/agent/agent.ts`). Tools are defined once as Zod schemas in
 `server/agent/tools.ts`; the server validates every tool input and sends the JSON Schema to Claude. Each file
 has its own chat. A user can run it on their own Anthropic, OpenAI or OpenRouter key; in the desktop app it can
-run on the user's own Claude Code instead (`server/agent/claudeAgent.ts`). Details in `docs/architecture.md`.
+run on the user's own Claude Code instead (`server/agent/claudeAgent.ts`). `web_search` and `image_search` use
+Brave Search (the user's key from Settings, else `BRAVE_SEARCH_API_KEY`), else the model provider's own web search
+(`server/agent/llmSearch.ts`). Details in `docs/architecture.md`.
 
 Two kinds of tools:
 

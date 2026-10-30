@@ -19,6 +19,7 @@ import { docDocx } from './docxExport.ts';
 import { deckPptx, imageSource, loadFile, workbookXlsx } from './export.ts';
 import type { ImageStore } from './images.ts';
 import type { LocalFileStore, LocalFolder, LocalSheetStore } from './localStore.ts';
+import { wroteFile } from './sheets.ts';
 
 /** An answer of the hosted app. */
 export interface WebResponse {
@@ -244,6 +245,7 @@ export async function downloadFromWeb(
       if (gone.length) warnings.push(`Not kept in the ${OFFICE_NAME[file.kind]} file: ${gone.join(', ')}.`);
     }
   }
+  wroteFile(s.folder.abs(rel));
   // The folder's lists pick the new file up; its id is the one they give it.
   s.sheets.listIn(s.userId, folder);
   s.files.listIn(s.userId, folder);

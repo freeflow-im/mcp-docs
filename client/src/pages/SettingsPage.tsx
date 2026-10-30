@@ -4,13 +4,17 @@
 // Connect your agent tile and the desktop app's File › Connect an Agent come) has the MCP address other agents
 // connect to and the agents connected, each of which can be disconnected: on the web the hosted address and the
 // agents signed in to the account; in the desktop app its own server on this computer and the agents it allowed.
+// The desktop app has a third tab (#desktop): whether new files in Downloads, Documents and Desktop open in it, and which kinds.
+// A Brave Search API key, optional, is what the assistant's web and image search use; without one they use the
+// model provider's own web search.
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ANTHROPIC_MODELS, OPENAI_MODELS, OPENROUTER_MODELS, type AssistantProvider, type AssistantSettings, type AssistantSettingsUpdate, type KeyProvider } from '../../../shared/agent/protocol.ts';
-import type { ConnectedAgent } from '../../../shared/types.ts';
+import type { ConnectedAgent, NewFilesSettings, NewFilesUpdate } from '../../../shared/types.ts';
 import { AgentButton } from '../agent/AgentPanel.tsx';
 import { useAgent } from '../agent/AgentProvider.tsx';
 import { api } from '../api.ts';
+import { useAuth } from '../auth.tsx';
 import { Account } from '../components/Account.tsx';
 import { appName } from '../brand.ts';
 
@@ -20,20 +24,23 @@ const PROVIDERS: { id: KeyProvider; name: string; placeholder: string; keysAt: s
   { id: 'openrouter', name: 'OpenRouter', placeholder: 'sk-or-…', keysAt: 'openrouter.ai/keys' },
 ];
 
-/** The page's tabs: the assistant's settings first, and connecting an agent at #agents. */
+/** The page's tabs: the assistant's settings first, connecting an agent at #agents, and the desktop app's own at #desktop. */
 const TABS = [
   { id: 'assistant', label: 'Assistant', hash: '' },
   { id: 'agents', label: 'Connect your agent', hash: '#agents' },
+  { id: 'desktop', label: 'Desktop', hash: '#desktop' },
 ] as const;
 
 export function SettingsPage() {
   const { hash } = useLocation();
   const navigate = useNavigate();
-  const tab = TABS.find((t) => t.hash === hash) ?? TABS[0];
+  const tabs = useAuth().local ? TABS : TABS.filter((t) => t.id !== 'desktop');
+  const tab = tabs.find((t) => t.hash === hash) ?? tabs[0];
   const [saved, setSaved] = useState<AssistantSettings | null>(null);
   const [provider, setProvider] = useState<AssistantProvider>('default');
   const [models, setModels] = useState<Record<KeyProvider, string>>({ anthropic: '', openai: '', openrouter: '' });
   const [keys, setKeys] = useState<Record<KeyProvider, string>>({ anthropic: '', openai: '', openrouter: '' });
+  const [braveKey, setBraveKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -44,6 +51,7 @@ export function SettingsPage() {
     setProvider(s.provider === 'default' && !s.builtIn ? (s.agents ? 'claude-agent' : 'anthropic') : s.provider);
     setModels({ anthropic: s.anthropicModel, openai: s.openaiModel, openrouter: s.openrouterModel });
     setKeys({ anthropic: '', openai: '', openrouter: '' });
+    setBraveKey('');
   };
 
   useEffect(() => {
@@ -78,6 +86,7 @@ export function SettingsPage() {
     openaiModel: models.openai as AssistantSettingsUpdate['openaiModel'],
     openrouterModel: models.openrouter.trim(),
     ...(current && keys[current.id].trim() ? { [`${current.id}Key`]: keys[current.id].trim() } : {}),
+    ...(braveKey.trim() ? { braveKey: braveKey.trim() } : {}),
   });
 
   return (
@@ -97,7 +106,7 @@ export function SettingsPage() {
 
       <div className="home-inner settings-tabs">
         <div className="settings-tab-list" role="tablist">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={t === tab} className={`settings-tab${t === tab ? ' active' : ''}`} onClick={() => navigate({ hash: t.hash }, { replace: true })}>
               {t.label}
             </button>
@@ -106,6 +115,8 @@ export function SettingsPage() {
       </div>
       {tab.id === 'agents' ? (
         <ConnectedAgents />
+      ) : tab.id === 'desktop' ? (
+        <NewFiles />
       ) : (
         <section className="home-inner changes">
           {saved && (
@@ -230,6 +241,22 @@ export function SettingsPage() {
                   </label>
                 </>
               )}
+              {provider !== 'claude-agent' && (
+                <label className="field">
+                  <span>Brave Search API key (optional)</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={braveKey}
+                    placeholder={saved.braveKey ? `Saved (${saved.braveKey}); leave blank to keep` : 'BSA…'}
+                    onChange={(e) => setBraveKey(e.target.value)}
+                  />
+                  <span className="field-hint">
+                    For the assistant’s web and image search. Without one it searches with {saved.builtIn ? 'this server’s search, or ' : ''}the web search of Anthropic or OpenAI when the assistant runs on them (OpenRouter has
+                    none here), which is slower and finds fewer pictures. Get a key at api-dashboard.search.brave.com; image search needs a plan with the Images endpoint.
+                  </span>
+                </label>
+              )}
               {error && <div className="form-error">{error}</div>}
               {notice && <div className="connector-notice">{notice}</div>}
               <div className="settings-actions">
@@ -250,6 +277,11 @@ export function SettingsPage() {
                     }
                   >
                     Remove saved key
+                  </button>
+                )}
+                {saved.braveKey && provider !== 'claude-agent' && (
+                  <button type="button" className="btn danger" disabled={busy} onClick={() => void save({ ...update(), braveKey: null }, 'The Brave Search key was removed.')}>
+                    Remove Brave Search key
                   </button>
                 )}
               </div>
@@ -312,6 +344,69 @@ function TryIt({ ready }: { ready: boolean }) {
 
 /** The command that adds the desktop app's MCP server at `url` to Claude Code. */
 const claudeCommand = (url: string) => `claude mcp add --scope user --transport http mcp-docs ${url}`;
+
+/** The desktop app's switch for opening new files that appear in Downloads, Documents and Desktop, and the kinds that open (desktop/newFiles.js). */
+function NewFiles() {
+  const [settings, setSettings] = useState<NewFilesSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .newFilesSettings()
+      .then(setSettings)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  const set = async (update: NewFilesUpdate) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setSettings(await api.saveNewFilesSettings(update));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="home-inner changes" id="desktop">
+      {settings === null ? (
+        !error && <div className="page-loading">Loading…</div>
+      ) : (
+        <>
+          <label className="settings-check">
+            <input type="checkbox" checked={settings.open} disabled={busy} onChange={(e) => void set({ open: e.target.checked })} /> Open new files in {appName()}
+          </label>
+          <p className="field-hint">
+            A file of the kinds below that appears in one of these folders (a download that finishes, a file saved from another app, a screenshot) opens here, and the app comes to the front. Files in their
+            folders and several files at once do not.
+          </p>
+          <ul className="settings-folders">
+            {settings.folders.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+          <div className="settings-kinds">
+            {settings.kinds.map((k) => (
+              <label key={k.id} className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={k.on}
+                  disabled={busy || !settings.open}
+                  onChange={(e) => void set({ kinds: settings.kinds.filter((o) => (o.id === k.id ? e.target.checked : o.on)).map((o) => o.id) })}
+                />{' '}
+                {k.label}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+      {error && <div className="form-error">{error}</div>}
+    </section>
+  );
+}
 
 /**
  * Agents signed in with a device code (mcp-remote --device-code, say), or in the desktop app those allowed to use

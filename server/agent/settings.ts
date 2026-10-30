@@ -2,6 +2,7 @@
 // Anthropic, OpenAI or OpenRouter API key, and which model. Keys are stored encrypted (the same server key as
 // connector credentials) and only ever returned masked. The desktop app has no model of its own: its user
 // brings a key, and on the first run one already set in their environment is used (adoptFromEnvironment).
+// A user's Brave Search API key, for the assistant's web and image search, is kept the same way.
 import {
   ANTHROPIC_MODELS,
   DEFAULT_ANTHROPIC_MODEL,
@@ -34,6 +35,8 @@ export interface ModelChoice {
 
 /** Checks a key before it is saved: it must be accepted and able to use the model. Throws SettingsError. */
 export type KeyCheck = (provider: KeyProvider, apiKey: string, model: string) => Promise<void>;
+/** Checks a Brave Search API key before it is saved: what is wrong with it, or null. */
+export type SearchKeyCheck = (apiKey: string) => Promise<string | null>;
 
 interface Row {
   provider: string;
@@ -46,6 +49,8 @@ interface Row {
   openrouter_model: string | null;
   openrouter_key: string | null;
   openrouter_key_masked: string | null;
+  brave_key: string | null;
+  brave_key_masked: string | null;
 }
 
 export class SettingsError extends Error {}
@@ -109,6 +114,7 @@ export class AssistantSettingsStore {
       anthropicKey: masked('anthropic'),
       openaiKey: masked('openai'),
       openrouterKey: masked('openrouter'),
+      braveKey: row?.brave_key ? (row.brave_key_masked ?? '••••') : null,
     };
   }
 
@@ -126,11 +132,17 @@ export class AssistantSettingsStore {
     return row?.openai_key ? decrypt(this.key, row.openai_key).api_key : null;
   }
 
+  /** The user's Brave Search API key for the search tools, or null. */
+  braveKey(userId: string): string | null {
+    const row = this.row(userId);
+    return row?.brave_key ? decrypt(this.key, row.brave_key).api_key : null;
+  }
+
   /**
    * Validate and save. `check` is called with the key and model of the chosen provider, so a wrong key or a
-   * model the key cannot use is reported here rather than in the chat.
+   * model the key cannot use is reported here rather than in the chat; `checkSearch` a new Brave Search key.
    */
-  async update(userId: string, body: Partial<AssistantSettingsUpdate>, check: KeyCheck): Promise<AssistantSettings> {
+  async update(userId: string, body: Partial<AssistantSettingsUpdate>, check: KeyCheck, checkSearch: SearchKeyCheck = async () => null): Promise<AssistantSettings> {
     const provider = body.provider;
     if (provider === 'claude-agent' && !this.agents) throw new SettingsError('Your own agent can only run the assistant in the desktop app.');
     if (provider !== 'default' && provider !== 'claude-agent' && !KEY_PROVIDERS.includes(provider as KeyProvider)) throw new SettingsError('Choose what the assistant runs on.');
@@ -162,13 +174,26 @@ export class AssistantSettingsStore {
         }
       }
     }
+    // The Brave Search key, the same way: new, removed (null) or kept (omitted).
+    let brave = { stored: row?.brave_key ?? null, masked: row?.brave_key_masked ?? null };
+    if (body.braveKey === null) brave = { stored: null, masked: null };
+    else if (body.braveKey !== undefined) {
+      if (typeof body.braveKey !== 'string') throw new SettingsError('The Brave Search API key is not valid.');
+      const k = body.braveKey.trim();
+      if (k) {
+        if (k.length > 400 || /\s/.test(k)) throw new SettingsError('The Brave Search API key is not valid.');
+        const problem = await checkSearch(k);
+        if (problem) throw new SettingsError(problem);
+        brave = { stored: encrypt(this.key, { api_key: k }), masked: mask(k) };
+      }
+    }
     if (provider !== 'default' && provider !== 'claude-agent') {
       const p = provider as KeyProvider;
       const apiKey = keys[p].plain;
       if (!apiKey) throw new SettingsError(`Enter your ${PROVIDER_NAMES[p]} API key to use ${PROVIDER_NAMES[p]}.`);
       await check(p, apiKey, models[p]);
     }
-    this.save(userId, provider as AssistantProvider, models, keys);
+    this.save(userId, provider as AssistantProvider, models, keys, brave);
     return this.get(userId);
   }
 
@@ -192,15 +217,22 @@ export class AssistantSettingsStore {
     return chosen;
   }
 
-  private save(userId: string, provider: AssistantProvider, models: Record<KeyProvider, string>, keys: Record<KeyProvider, { stored: string | null; masked: string | null }>): void {
+  private save(
+    userId: string,
+    provider: AssistantProvider,
+    models: Record<KeyProvider, string>,
+    keys: Record<KeyProvider, { stored: string | null; masked: string | null }>,
+    brave: { stored: string | null; masked: string | null } = { stored: null, masked: null },
+  ): void {
     this.db
       .prepare(
         `INSERT INTO assistant_settings (user_id, provider, openai_model, openai_key, openai_key_masked, anthropic_model, anthropic_key, anthropic_key_masked,
-           openrouter_model, openrouter_key, openrouter_key_masked, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           openrouter_model, openrouter_key, openrouter_key_masked, brave_key, brave_key_masked, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (user_id) DO UPDATE SET provider = excluded.provider, openai_model = excluded.openai_model, openai_key = excluded.openai_key,
            openai_key_masked = excluded.openai_key_masked, anthropic_model = excluded.anthropic_model, anthropic_key = excluded.anthropic_key,
            anthropic_key_masked = excluded.anthropic_key_masked, openrouter_model = excluded.openrouter_model, openrouter_key = excluded.openrouter_key,
-           openrouter_key_masked = excluded.openrouter_key_masked, updated_at = excluded.updated_at`,
+           openrouter_key_masked = excluded.openrouter_key_masked, brave_key = excluded.brave_key, brave_key_masked = excluded.brave_key_masked,
+           updated_at = excluded.updated_at`,
       )
       .run(
         userId,
@@ -214,6 +246,8 @@ export class AssistantSettingsStore {
         models.openrouter,
         keys.openrouter.stored,
         keys.openrouter.masked,
+        brave.stored,
+        brave.masked,
         new Date().toISOString(),
       );
   }

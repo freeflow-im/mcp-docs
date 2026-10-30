@@ -11,6 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { contextMenuTemplate } from './contextMenu.js';
 import { LocalOAuth } from './mcpAuth.js';
+import { DEFAULT_KINDS, KINDS, watchNewFiles } from './newFiles.js';
 import { createUpdater } from './updater.js';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -262,6 +263,72 @@ function connectAgent() {
   showPage('/settings#agents');
 }
 
+// --- New files (desktop/newFiles.js) --------------------------------------------------------------------------
+// A file that appears in Downloads, Documents or Desktop (a download that finished, a file saved from another app)
+// opens in the app, which comes to the front, as one Finder asks for does. On unless the person turns it off in
+// Settings, which also chooses the kinds of file (kept in new-files.json in the app's data folder). The app's own writes (desktop/server.ts tells them)
+// are not new files: a document made in the app is already showing.
+const newFilesFile = () => path.join(app.getPath('userData'), 'new-files.json');
+/** The folders watched: Downloads, Documents and Desktop, wherever the system keeps them (OneDrive's, on Windows). */
+const newFilesFolders = () => [...new Set(['downloads', 'documents', 'desktop'].map((name) => app.getPath(name)))].filter(isDir);
+/** The files the folders' servers wrote lately, by path, with when. */
+const ownWrites = new Map();
+let stopNewFiles = null;
+
+/** What Settings chose: `{ open, kinds }`, on with the default kinds until then. */
+function newFilesChosen() {
+  let saved = {};
+  try {
+    saved = JSON.parse(readFileSync(newFilesFile(), 'utf8'));
+  } catch {
+    // Not chosen yet.
+  }
+  const kinds = Array.isArray(saved.kinds) ? saved.kinds.filter((k) => KINDS.some((kind) => kind.id === k)) : DEFAULT_KINDS;
+  return { open: saved.open !== false, kinds };
+}
+
+function wrote(file) {
+  const now = Date.now();
+  for (const [f, at] of ownWrites) if (now - at > 5 * 60_000) ownWrites.delete(f);
+  ownWrites.set(path.resolve(file), now);
+}
+
+function watchFolders({ open, kinds }) {
+  stopNewFiles?.();
+  stopNewFiles = null;
+  if (!open || !kinds.length) return;
+  stopNewFiles = watchNewFiles({
+    dirs: newFilesFolders(),
+    kinds,
+    ignore: (file) => ownWrites.has(file),
+    settle: 750,
+    bulk: 750,
+    onFile: (file) =>
+      void showFile(file)
+        .then(bringToFront)
+        .catch(() => {}),
+  });
+}
+
+/** Settings' New files (desktop/server.ts asks): `{ open, kinds }` changes them; the answer is how they are now. */
+function newFilesAnswer(set) {
+  let chosen = newFilesChosen();
+  if (typeof set?.open === 'boolean' || Array.isArray(set?.kinds)) {
+    chosen = {
+      open: typeof set.open === 'boolean' ? set.open : chosen.open,
+      kinds: Array.isArray(set.kinds) ? KINDS.filter((k) => set.kinds.includes(k.id)).map((k) => k.id) : chosen.kinds,
+    };
+    try {
+      mkdirSync(app.getPath('userData'), { recursive: true });
+      writeFileSync(newFilesFile(), JSON.stringify(chosen));
+    } catch {
+      // Back to what it was at the next start, that's all.
+    }
+    watchFolders(chosen);
+  }
+  return { open: chosen.open, folders: newFilesFolders(), kinds: KINDS.map((k) => ({ id: k.id, label: k.label, on: chosen.kinds.includes(k.id) })) };
+}
+
 // --- PDFs (server/pdf.ts) ------------------------------------------------------------------------------------
 // A folder's server asks for the PDF of a page of the app (with a print ticket as its cookie, which lets the
 // page read the file) or of a stored web page's HTML. It is printed in a hidden window with a session of its
@@ -400,7 +467,8 @@ async function startServer(dir) {
     if (msg && typeof msg.openFileInTab === 'string') void openFile(msg.openFileInTab, false).catch(failed);
     if (msg && typeof msg.openFolder === 'string') void openFolder(msg.openFolder, msg.folder ? `/?folder=${encodeURIComponent(msg.folder)}` : '/', msg.inTab ? null : windowFor(server)).catch(failed);
     if (msg?.chooseFolder) void chooseFolder(windowFor(server), msg.inTab === true).catch(failed);
-    if (msg && typeof msg.agents === 'string') child.connected && child.send({ agentsDone: msg.agents, answer: agentsAnswer(msg) });
+    if (msg && typeof msg.ask === 'string') child.connected && child.send({ askDone: msg.ask, answer: msg.newFiles ? newFilesAnswer(msg.newFiles) : agentsAnswer(msg) });
+    if (msg && typeof msg.wrote === 'string') wrote(msg.wrote);
     if (msg && typeof msg.reveal === 'string' && inFolder(msg.reveal, server.dir)) reveal(msg.reveal);
     if (msg && typeof msg.drag === 'string' && inFolder(msg.drag, server.dir)) void dragOut(msg.drag, windowFor(server)).catch(() => {});
     if (msg && typeof msg.show === 'string' && msg.show.startsWith('/')) showPage(msg.show, server);
@@ -917,6 +985,7 @@ app.whenReady().then(async () => {
   } finally {
     started = true;
     if (launchLink) handleAppLink(launchLink);
+    watchFolders(newFilesChosen());
     // The installed app offers once to open the standard formats too.
     if (servers.size && canBeDefault() && !existsSync(defaultAskedFile())) void offerDefaultApp(true);
   }
@@ -931,4 +1000,7 @@ app.on('new-window-for-tab', () => void newTab().catch((e) => dialog.showErrorBo
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-app.on('quit', stopServers);
+app.on('quit', () => {
+  stopNewFiles?.();
+  stopServers();
+});

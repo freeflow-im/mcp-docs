@@ -24,7 +24,7 @@ beforeAll(async () => {
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
   dir = mkdtempSync(path.join(tmpdir(), 'sheetsweb-test-'));
-  app = await buildApp({ dataDir: dir, sendMail: box.send, appUrl: 'https://sheets.test', imageEditor: async (req) => (imageEdits.push(req), Buffer.from(`edited:${req.prompt}`)), checkAssistantKey: async () => {} });
+  app = await buildApp({ dataDir: dir, sendMail: box.send, appUrl: 'https://sheets.test', imageEditor: async (req) => (imageEdits.push(req), Buffer.from(`edited:${req.prompt}`)), checkAssistantKey: async () => {}, checkSearchKey: async (k) => (k === 'BSA-bad' ? 'Brave Search did not accept that API key.' : null) });
 });
 
 afterAll(async () => {
@@ -823,6 +823,26 @@ describe('getting started', () => {
     const res = await app.inject({ method: 'POST', url: '/api/getting-started', headers: { cookie } });
     expect(res.statusCode).toBe(200);
     expect(res.json().deck.title).toBe('Getting started');
+  });
+});
+
+describe('assistant settings', () => {
+  it('keeps a Brave Search API key, checked, masked and removable', async () => {
+    const { cookie } = await signUp(app, box, 'brave@x.com');
+    const put = (payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: '/api/settings/assistant', headers: { cookie }, payload });
+    let res = await put({ provider: 'default', braveKey: 'BSA-bad' });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('did not accept');
+
+    res = await put({ provider: 'default', braveKey: 'BSA-good-key-1234' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().settings.braveKey).toMatch(/1234$/);
+    expect(res.json().settings.braveKey).not.toContain('good');
+    // Saving other settings keeps it; null removes it.
+    res = await put({ provider: 'default' });
+    expect(res.json().settings.braveKey).toMatch(/1234$/);
+    res = await put({ provider: 'default', braveKey: null });
+    expect(res.json().settings.braveKey).toBeNull();
   });
 });
 

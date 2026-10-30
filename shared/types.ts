@@ -182,6 +182,20 @@ export function newWorkbook(firstTabId: string): Workbook {
 }
 
 /** A stored file (generated PDF, upload): metadata only; the bytes are served from `url` / `downloadUrl`. */
+/** The desktop app's opening of new files that appear in Downloads, Documents and Desktop (desktop/newFiles.js), on the Settings page. */
+export interface NewFilesSettings {
+  open: boolean;
+  /** The folders watched, absolute. */
+  folders: string[];
+  /** The kinds of file that open (desktop/newFiles.js's KINDS), each with whether it does. */
+  kinds: { id: string; label: string; on: boolean }[];
+}
+/** A change to NewFilesSettings: turned on or off, and the ids of the kinds that open. */
+export interface NewFilesUpdate {
+  open?: boolean;
+  kinds?: string[];
+}
+
 /** An agent signed in to the account's files with a device code (the plugin's /mcp/v2), listed on the Settings page. */
 export interface ConnectedAgent {
   id: string;

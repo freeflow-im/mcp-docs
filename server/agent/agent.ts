@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { chatScope, CLIENT_TOOLS, HOME_CHAT, IMAGE_MEDIA_TYPES, isChatScope, MAX_IMAGE_BYTES, MAX_IMAGES_PER_MESSAGE, type AgentEvent, type AgentImage, type AgentTurnRequest, type ChatItem, type ClientToolCall } from '../../shared/agent/protocol.ts';
 import { STORED_IMAGE_RE } from '../../shared/types.ts';
 import type { SheetStore } from '../sheets.ts';
+import { providerSearch, type ProviderSearch } from './llmSearch.ts';
 import { ownModel } from './providers.ts';
 import { PROMPT_WITHOUT_JOBS, renderContext, stripContext, SYSTEM_PROMPT } from './prompt.ts';
 import type { AssistantSettingsStore, ModelChoice } from './settings.ts';
@@ -37,6 +38,8 @@ export interface AgentOptions {
   dailyRequestLimit?: number;
   /** Makes the model call for a user running the assistant on their own key (Anthropic, OpenAI or OpenRouter). Tests pass a stub. */
   ownModel?: (choice: ModelChoice) => ModelCall;
+  /** The model provider's own web search, used without a Brave Search API key (null: the server's model). Tests pass a stub. */
+  providerSearch?: (choice: ModelChoice | null) => ProviderSearch | null;
   /** Where import_file puts pictures and stored files. */
   images?: ImageStore;
   files?: FileStore;
@@ -69,6 +72,7 @@ export class AgentService {
   private settings: AssistantSettingsStore;
   private model: ModelCall | null;
   private ownModel: (choice: ModelChoice) => ModelCall;
+  private providerSearch: (choice: ModelChoice | null) => ProviderSearch | null;
   private dailyLimit: number;
   private images: ImageStore | undefined;
   private files: FileStore | undefined;
@@ -84,6 +88,7 @@ export class AgentService {
     this.settings = settings;
     this.model = opts.model ?? null;
     this.ownModel = opts.ownModel ?? ownModel;
+    this.providerSearch = opts.providerSearch ?? providerSearch;
     this.images = opts.images;
     this.files = opts.files;
     this.pdf = opts.pdf;
@@ -190,10 +195,12 @@ export class AgentService {
     this.store.append(conv.id, { role: 'user', content });
     this.store.setPending(conv.id, null);
 
-    const env = { userId, sheets: this.sheets, images: this.images, files: this.files, pdf: this.pdf, context: req.context };
     // The user's own key and model when they set one in Settings; otherwise the server's model.
     const own = this.settings.choice(userId);
     if (!own && !this.settings.builtIn) throw new AgentError(400, 'Choose what the assistant runs on in Settings: add your Anthropic, OpenAI or OpenRouter API key.');
+    // Search with the user's Brave key, else the server's, else the provider's own search.
+    const search = { braveKey: this.settings.braveKey(userId), provider: this.providerSearch(own) };
+    const env = { userId, sheets: this.sheets, images: this.images, files: this.files, pdf: this.pdf, context: req.context, search };
     const callModel = own ? this.ownModel(own) : this.getModel();
     let parseRetries = 0;
 

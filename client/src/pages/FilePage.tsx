@@ -21,9 +21,11 @@ import { FileSearchButton } from '../components/FileSearch.tsx';
 import { FolderCrumbs, lastListingHref } from '../components/FolderCrumbs.tsx';
 import { TitleInput } from '../components/TitleInput.tsx';
 import { HomeIcon } from '../components/Logo.tsx';
+import { MenuList, type MenuItem } from '../components/Menu.tsx';
+import { ConfirmModal, PromptModal } from '../components/Modal.tsx';
+import { useOpenInTab } from '../components/OpenInTab.tsx';
 import { useFavicon } from '../favicon.ts';
 import { isPowerPointFile, isWordFile, titleFromFileName } from '../importFile.ts';
-import { appName } from '../brand.ts';
 import { downloadPdf } from '../print.ts';
 
 // Remove background in the image editor: a model that runs in the browser, fetched when it is first used.
@@ -37,7 +39,19 @@ function editableKind(filename: string): string | null {
   return null;
 }
 
-/** A stored file in its own tab: an in-app preview for PDFs, images and web pages, a player for videos, or just its details, with a Download button. */
+/** Download a file from its address, as the Download button's link does. */
+function download(url: string, filename: string) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+}
+
+/**
+ * A stored file in its own tab: an in-app preview for PDFs, images and web pages, a player for videos, or just its
+ * details, with a Download button. Its File menu is the editors' (Open, Open in Finder, Rename, Download, Delete),
+ * with what the page offers for the kind of file (Edit, Convert to Markdown, Download as PDF, Open as …).
+ */
 export function FilePage() {
   const { id = '' } = useParams();
   useFavicon('home');
@@ -133,6 +147,22 @@ export function FilePage() {
   const editableImage = !!file && EDITABLE_IMAGE_TYPES.includes(file.type);
   // A JSON file (small enough to edit as text) is shown as a tree; Edit opens it in the text editor.
   const json = !!file?.text && (file.type === 'application/json' || /\.json$/i.test(file.filename));
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
+  const openInTab = useOpenInTab();
+  // Close menus on outside click.
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [openMenu]);
+  const pdfOfPage = (f: StoredFile) => {
+    setMakingPdf(true);
+    downloadPdf(f.id)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setMakingPdf(false));
+  };
   const revert = () =>
     api.revertFile(id).then(
       (r) => {
@@ -142,19 +172,63 @@ export function FilePage() {
       },
       (e: Error) => setError(e.message),
     );
+  const pdf = file?.type === 'application/pdf';
+  const html = file?.type === HTML_TYPE;
+  const fileMenu = (f: StoredFile): MenuItem[] => {
+    const office = editableKind(f.filename);
+    const kindItems: MenuItem[] = [
+      ...(editableImage ? [{ label: 'Edit picture', checked: editing, action: () => setEditing(!editing) }] : []),
+      ...(pdf ? [{ label: 'Sign or add text', checked: editing, action: () => setEditing(!editing) }] : []),
+      ...(html ? [{ label: 'Edit page', checked: editing, action: () => setEditing(!editing) }] : []),
+      ...(json ? [{ label: 'Edit as text', checked: editing, action: () => setEditing(!editing) }] : []),
+      ...((editableImage || pdf) && canRevert && !editing ? [{ label: 'Undo save', action: () => void revert() }] : []),
+      ...(pdf ? [{ label: 'Convert to Markdown', disabled: converting, action: () => void toMarkdown(f) }] : []),
+      ...(office ? [{ label: `Open as ${office}`, disabled: converting, action: () => void convert(f) }] : []),
+    ];
+    return [
+      ...openInTab.items,
+      { label: 'Rename…', action: () => setDialog('rename') },
+      ...(kindItems.length ? (['sep', ...kindItems] as MenuItem[]) : []),
+      'sep',
+      { label: 'Download', action: () => download(f.downloadUrl, f.filename) },
+      ...(html ? [{ label: 'Download as PDF', disabled: makingPdf, action: () => pdfOfPage(f) }] : []),
+      'sep',
+      { label: 'Delete file', danger: true, action: () => setDialog('delete') },
+      'sep',
+      { label: 'Home', action: () => navigate('/') },
+    ];
+  };
+
   return (
     <div className="file-page">
-      <header className="home-header">
-        <Link to={lastListingHref()} className="home-brand" title="Back to the file list">
+      <header className="wb-header">
+        <Link to={lastListingHref()} className="wb-logo" title="Back to the file list">
           <HomeIcon />
-          <span>{appName()}</span>
         </Link>
-        <span className="file-page-title">
-          {file && <FavoriteStar kind="file" id={file.id} onError={setError} />}
-          {file && <FolderCrumbs folder={file.folder} />}
-          {file && <TitleInput title={file.filename} label="File name" onRename={(name) => api.renameFile(file.id, name).then((r) => setFile(r.file))} onError={setError} />}
-        </span>
-        <div className="home-user">
+        <div className="wb-titles">
+          <div className="wb-title-row">
+            {file && <FavoriteStar kind="file" id={file.id} onError={setError} />}
+            {file && <FolderCrumbs folder={file.folder} />}
+            {file && <TitleInput title={file.filename} label="File name" onRename={(name) => api.renameFile(file.id, name).then((r) => setFile(r.file))} onError={setError} />}
+          </div>
+          {file && (
+            <nav className="menubar" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="menubar-entry">
+                <button
+                  className={`menubar-btn${openMenu === 'file' ? ' open' : ''}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setOpenMenu(openMenu === 'file' ? null : 'file');
+                  }}
+                >
+                  File
+                </button>
+                {openMenu === 'file' && <MenuList items={fileMenu(file)} onDone={() => setOpenMenu(null)} style={{ top: 26, left: 0 }} />}
+              </div>
+            </nav>
+          )}
+        </div>
+        <div className="wb-user">
           <FileSearchButton />
           {file?.type === HTML_TYPE && (
             <button className={`btn${editing ? ' active' : ''}`} onClick={() => setEditing(!editing)} title={editing ? 'Run the page as a browser would, with its scripts and links working' : "Select, edit, delete and recolor the page's elements"}>
@@ -165,12 +239,7 @@ export function FilePage() {
             <button
               className="btn"
               disabled={makingPdf}
-              onClick={() => {
-                setMakingPdf(true);
-                downloadPdf(file.id)
-                  .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-                  .finally(() => setMakingPdf(false));
-              }}
+              onClick={() => pdfOfPage(file)}
               title="Download the page as a PDF, as a browser prints it"
             >
               {makingPdf ? 'Making PDF…' : 'Download as PDF'}
@@ -214,6 +283,31 @@ export function FilePage() {
           <AgentButton />
         </div>
       </header>
+      {openInTab.dialog}
+      {file && dialog === 'rename' && (
+        <PromptModal
+          title="Rename file"
+          label="File name"
+          initial={file.filename}
+          confirmText="Rename"
+          maxLength={255}
+          onConfirm={async (name) => setFile((await api.renameFile(file.id, name.trim())).file)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {file && dialog === 'delete' && (
+        <ConfirmModal
+          title="Delete file?"
+          message={<>“{file.filename}” will be deleted.</>}
+          confirmText="Delete"
+          danger
+          onConfirm={async () => {
+            await api.deleteFile(file.id);
+            navigate(lastListingHref());
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
       <main className="file-page-body">
         {error ? (
           <div className="form-error">{error}</div>

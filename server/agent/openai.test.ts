@@ -162,6 +162,7 @@ describe('assistant settings', () => {
     anthropicKey: null,
     openaiKey: null,
     openrouterKey: null,
+    braveKey: null,
   };
 
   it('requires sign-in and starts on the built-in model', async () => {

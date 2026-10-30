@@ -7,6 +7,7 @@ import type { AgentContext, AgentEvent, AgentTurnRequest } from '../shared/agent
 import type { ModelCall } from './agent/agent.ts';
 import { PROMPT_WITHOUT_JOBS } from './agent/prompt.ts';
 import { resetSearchRateLimit, runServerTool, TOOL_DEFS_WITHOUT_JOBS, validateToolInput } from './agent/tools.ts';
+import { imageCandidates } from './agent/llmSearch.ts';
 import { buildApp } from './app.ts';
 import { mailbox, signUp } from './testing.ts';
 
@@ -429,6 +430,53 @@ describe('web and image search tools', () => {
       { title: 'Cover (wiki)', image_url: 'https://upload.wikimedia.org/a/Eat_a_Peach.png', source_page_url: 'https://en.wikipedia.org/wiki/Eat_a_Peach', width: 300, height: 300 },
       { title: 'Cover (blog)', image_url: 'https://blog.example.com/cover.jpg', source_page_url: 'https://blog.example.com/p', width: 500, height: 500 },
     ]);
+  });
+
+  it('uses the user’s own Brave key before the server’s', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => json({ web: { results: [] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await runServerTool('web_search', { query: 'q' }, { ...env, search: { braveKey: 'user-key' } }).catch(() => {});
+    expect((fetchMock.mock.calls[0][1]?.headers as Record<string, string>)['X-Subscription-Token']).toBe('user-key');
+  });
+
+  it('searches with the model provider’s own web search without a Brave key', async () => {
+    vi.stubEnv('BRAVE_SEARCH_API_KEY', '');
+    const provider = {
+      name: 'Anthropic',
+      web: vi.fn(async () => [
+        { title: 'IBM <b>logo</b>', url: 'https://en.wikipedia.org/wiki/IBM', snippet: 'The logo' },
+        { title: 'dup', url: 'https://en.wikipedia.org/wiki/IBM', snippet: '' },
+        { title: 'bad', url: 'javascript:x', snippet: '' },
+      ]),
+      images: vi.fn(async () => [
+        { title: 'IBM logo', image_url: 'https://upload.wikimedia.org/a/IBM_logo.png', source_page_url: 'https://commons.wikimedia.org/wiki/File:IBM_logo.svg' },
+        { title: 'Page', image_url: 'https://example.com/ibm', source_page_url: null },
+        { title: 'Gone', image_url: 'https://example.com/missing.png', source_page_url: null },
+      ]),
+    };
+    const fetchMock = vi.fn(async (url: string) => (url.includes('missing') ? new Response(null, { status: 404 }) : new Response(null, { status: 200, headers: { 'content-type': 'image/png' } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const withProvider = { ...env, search: { braveKey: null, provider } };
+
+    const web = JSON.parse(await runServerTool('web_search', { query: 'IBM logo' }, withProvider));
+    expect(web.results).toEqual([{ title: 'IBM logo', url: 'https://en.wikipedia.org/wiki/IBM', snippet: 'The logo' }]);
+    const images = JSON.parse(await runServerTool('image_search', { query: 'IBM logo', max_results: 3 }, withProvider));
+    expect(images.results).toEqual([
+      { title: 'IBM logo', image_url: 'https://upload.wikimedia.org/a/IBM_logo.png', source_page_url: 'https://commons.wikimedia.org/wiki/File:IBM_logo.svg', width: null, height: null },
+    ]);
+    expect(provider.images).toHaveBeenCalledWith('IBM logo', 3);
+    expect(fetchMock.mock.calls.every(([u]) => !String(u).includes('api.search.brave.com'))).toBe(true);
+
+    provider.web.mockRejectedValueOnce(new Error('overloaded'));
+    await expect(runServerTool('web_search', { query: 'q' }, withProvider)).rejects.toThrow(/Anthropic's web search failed \(overloaded\)/);
+  });
+
+  it('reads the image candidates out of a model’s answer', () => {
+    expect(imageCandidates('Here they are:\n[{"title":"A","image_url":"https://x.org/a.png","source_page_url":"https://x.org"},{"title":"B"},3]\nDone.')).toEqual([
+      { title: 'A', image_url: 'https://x.org/a.png', source_page_url: 'https://x.org' },
+    ]);
+    expect(imageCandidates('none found')).toEqual([]);
+    expect(imageCandidates('[not json]')).toEqual([]);
   });
 
   it('reports empty results, API errors, a missing key and the rate limit clearly', async () => {
