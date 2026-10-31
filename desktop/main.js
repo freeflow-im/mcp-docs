@@ -304,7 +304,7 @@ function watchFolders({ open, kinds }) {
     settle: 750,
     bulk: 750,
     onFile: (file) =>
-      void showFile(file)
+      void showFile(file, true)
         .then(bringToFront)
         .catch(() => {}),
   });
@@ -749,13 +749,19 @@ async function openFile(file, fromRecents = true, win = null, back = '') {
   await openFolder(path.dirname(file), `/open?file=${encodeURIComponent(path.basename(file))}${fromRecents ? '&from=recents' : ''}${extra}`, win);
 }
 
-/** Show a file the system asked the app to open (Finder): in the folder in front when it is there, else in a new tab on its own folder. */
-async function showFile(file) {
+/**
+ * Show a file the system asked the app to open (Finder): in the folder in front when it is there, else in a new tab on its own folder.
+ * With `inNewTab` (a new file the watcher saw), a file in the folder in front gets a new tab on that folder too, so no tab is taken over.
+ */
+async function showFile(file, inNewTab = false) {
   const current = frontServer();
   const rel = current ? path.relative(current.dir, file) : '';
   const parts = rel.split(path.sep);
-  if (rel && !path.isAbsolute(rel) && !parts.some((p) => p === '..')) showPage(`/open?file=${encodeURIComponent(parts.join('/'))}`, current);
-  else await openFile(file, false);
+  if (rel && !path.isAbsolute(rel) && !parts.some((p) => p === '..')) {
+    const page = `/open?file=${encodeURIComponent(parts.join('/'))}`;
+    if (inNewTab) createWindow(current, `${current.origin}${page}`, front).focus();
+    else showPage(page, current);
+  } else await openFile(file, false);
 }
 
 /**

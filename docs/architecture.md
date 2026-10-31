@@ -106,7 +106,7 @@ How each part of MCP Docs works, area by area: what CLAUDE.md points to. Read th
   the default for the standard ones whatever the app declares, so the installed app offers once, and has
   Make Default App… in the app menu, to set itself as the person's default (`setDefaultApp`). Finder's
   `open-file` shows the file in the open folder when it is inside it, else opens the file's own folder.
-  New files in Downloads, Documents and Desktop (`app.getPath`, so Windows' known folders too) open the same way and
+  New files in Downloads, Documents and Desktop (`app.getPath`, so Windows' known folders too) open the same way, but always in a new tab, and
   bring the app to the front (`desktop/newFiles.js`, `watchFolders` in `main.js`): not recursively, only the kinds chosen in
   Settings (`KINDS`: Office files, PDFs, Markdown, CSV, other text files, which are any name whose first 8 KB are text, pictures,
   and videos, off at first), never hidden, lock or unfinished ones (`.crdownload`, `.part`, …), once a file stops changing, and
